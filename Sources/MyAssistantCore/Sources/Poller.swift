@@ -13,22 +13,33 @@ public final class Poller {
     let now: () -> Date
     private var tasks: [SourceKind: Task<Void, Never>] = [:]
     private var failures: [SourceKind: Int] = [:]
+    let makeSources: @MainActor (OAuth) -> SourceSet
+    private var cached: (oauth: OAuth, set: SourceSet)?
     private var wakeObserver: NSObjectProtocol?
 
     public init(model: AppModel, sources: SourceSet? = nil,
                 sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-                now: @escaping () -> Date = { Date() }) {
+                now: @escaping () -> Date = { Date() },
+                makeSources: @escaping @MainActor (OAuth) -> SourceSet = {
+                    GraphSourceSet(client: GraphClient(tokens: $0, transport: URLSession.shared))
+                }) {
         self.model = model; self.sources = sources; self.sleep = sleep; self.now = now
+        self.makeSources = makeSources
     }
 
     func resolveSources() -> SourceSet? {
         if let sources { return sources }
-        guard let oauth = model.oauth else { return nil }
-        return GraphSourceSet(client: GraphClient(tokens: oauth, transport: URLSession.shared))
+        guard let oauth = model.oauth else { cached = nil; return nil }
+        if let c = cached, c.oauth === oauth { return c.set }
+        let set = makeSources(oauth)
+        cached = (oauth, set)
+        return set
     }
 
     public func start() {
         stop()
+        failures = [:]
+        cached = nil
         for kind in SourceKind.allCases {
             guard model.settings.enabled.contains(kind) else { model.status[kind] = .disabled; continue }
             tasks[kind] = Task { [weak self] in
@@ -65,18 +76,24 @@ public final class Poller {
             switch kind {
             case .mail:
                 let r = try await src.fetchMail(deltaLink: model.state.deltaLinks[kind.rawValue])
+                try Task.checkCancellation()
                 model.notifications.ingest(r.items)
                 if let l = r.deltaLink { model.state.deltaLinks[kind.rawValue] = l }
             case .teams:
                 let r = try await src.fetchTeams(lastSeen: model.state.teamsLastSeen)
+                try Task.checkCancellation()
                 model.notifications.ingest(r.items)
                 model.state.teamsLastSeen = r.lastSeen
             case .calendar:
-                model.events.replace(try await src.fetchCalendar(now: now()))
+                let evs = try await src.fetchCalendar(now: now())
+                try Task.checkCancellation()
+                model.events.replace(evs)
             }
             failures[kind] = 0
             model.status[kind] = .ok(now())
             model.save()
+            return Self.interval(for: kind, now: now())
+        } catch where Self.isCancellation(error) || Task.isCancelled {
             return Self.interval(for: kind, now: now())
         } catch let e as GraphError {
             switch e {
@@ -91,6 +108,10 @@ public final class Poller {
             model.status[kind] = .error(error.localizedDescription)
             return backoff(kind)
         }
+    }
+
+    static func isCancellation(_ e: Error) -> Bool {
+        e is CancellationError || (e as? URLError)?.code == .cancelled
     }
 
     private func backoff(_ kind: SourceKind) -> TimeInterval {

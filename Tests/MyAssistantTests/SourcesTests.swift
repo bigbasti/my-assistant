@@ -52,6 +52,12 @@ private let chatsJSON = #"""
         #expect(r.lastSeen == ["c1": "2", "c2": "9", "c3": "5"])
     }
 
+    @Test func teamsNewChatWithNonEmptyStateEmits() async throws {
+        let (c, _) = client([(200, #"{"id":"me1"}"#, [:]), (200, chatsJSON, [:])])
+        let r = try await TeamsSource(client: c, now: { now }).fetchNew(lastSeen: ["c2": "9", "c3": "5"])
+        #expect(r.items.map(\.id) == ["teams:c1:2"])
+    }
+
     @Test func teamsFirstRunEmitsNothing() async throws {
         let (c, _) = client([(200, #"{"id":"me1"}"#, [:]), (200, chatsJSON, [:])])
         let r = try await TeamsSource(client: c, now: { now }).fetchNew(lastSeen: [:])
@@ -85,8 +91,9 @@ private let chatsJSON = #"""
 struct FakeSources: SourceSet {
     var mail: @Sendable (URL?) async throws -> (items: [AssistantNotification], deltaLink: URL?) = { _ in ([], nil) }
     func fetchMail(deltaLink: URL?) async throws -> (items: [AssistantNotification], deltaLink: URL?) { try await mail(deltaLink) }
+    var cal: @Sendable () async throws -> [CalendarEvent] = { [] }
     func fetchTeams(lastSeen: [String: String]) async throws -> (items: [AssistantNotification], lastSeen: [String: String]) { ([], lastSeen) }
-    func fetchCalendar(now: Date) async throws -> [CalendarEvent] { [] }
+    func fetchCalendar(now: Date) async throws -> [CalendarEvent] { try await cal() }
 }
 
 @MainActor @Suite struct PollerTests {
@@ -118,6 +125,66 @@ struct FakeSources: SourceSet {
         var h = FakeSources(); h.mail = { _ in throw GraphError.consentRequired }
         _ = await Poller(model: m, sources: h).pollOnce(.mail)
         #expect(m.status[.mail] == .consentRequired)
+    }
+
+    @Test func sourceSetCachedSoMeFetchedOnce() async {
+        let m = model()
+        m.settings.clientID = "cid"
+        m.rebuildOAuth()
+        let t = MockTransport([(200, #"{"id":"me1"}"#, [:]), (200, chatsJSON, [:]), (200, chatsJSON, [:])])
+        let p = Poller(model: m, now: { now }, makeSources: { _ in
+            GraphSourceSet(client: GraphClient(tokens: MockTokens(), transport: t))
+        })
+        _ = await p.pollOnce(.teams)
+        _ = await p.pollOnce(.teams)
+        #expect(t.requests.filter { $0.url!.path.hasSuffix("/me") }.count == 1)
+        #expect(t.requests.count == 3)
+    }
+
+    @Test func cancelledPollIsSilent() async {
+        let m = model()
+        let p = Poller(model: m, sources: { var f = FakeSources(); f.cal = { throw CancellationError() }; return f }(), now: { now })
+        let before = m.status[.calendar]
+        _ = await p.pollOnce(.calendar)
+        #expect(m.status[.calendar] == before)
+        #expect(await p.pollOnce(.mail) == 30) // unaffected
+        var u = FakeSources(); u.mail = { _ in throw URLError(.cancelled) }
+        let p2 = Poller(model: m, sources: u, now: { now })
+        #expect(await p2.pollOnce(.mail) == 30)
+        #expect(m.status[.mail] != .error("The operation couldn’t be completed."))
+        #expect(await p2.pollOnce(.mail) == 30) // failures not bumped
+    }
+
+    @Test func cancelledTaskDoesNotIngestOrSave() async {
+        let m = model()
+        let link = URL(string: "https://graph.microsoft.com/v1.0/d?t=3")!
+        var f = FakeSources(); f.mail = { _ in
+            while !Task.isCancelled { await Task.yield() }
+            return ([], link)
+        }
+        let p = Poller(model: m, sources: f, now: { now })
+        let task = Task { @MainActor in await p.pollOnce(.mail) }
+        await Task.yield()
+        task.cancel()
+        _ = await task.value
+        #expect(m.state.deltaLinks["mail"] == nil)
+        #expect(m.status[.mail] == nil)
+    }
+
+    @Test func failedPollKeepsDeltaLink() async {
+        let m = model()
+        let link = URL(string: "https://graph.microsoft.com/v1.0/d?t=4")!
+        m.state.deltaLinks["mail"] = link
+        var f = FakeSources(); f.mail = { _ in throw GraphError.http(500) }
+        _ = await Poller(model: m, sources: f, now: { now }).pollOnce(.mail)
+        #expect(m.state.deltaLinks["mail"] == link)
+    }
+
+    @Test func unauthorizedMapsToSignedOut() async {
+        let m = model()
+        var f = FakeSources(); f.mail = { _ in throw GraphError.unauthorized }
+        _ = await Poller(model: m, sources: f, now: { now }).pollOnce(.mail)
+        #expect(m.status[.mail] == .signedOut)
     }
 
     @Test func noOAuthMeansSignedOut() async {
