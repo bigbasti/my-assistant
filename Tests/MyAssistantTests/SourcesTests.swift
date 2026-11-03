@@ -124,7 +124,7 @@ struct FakeSources: SourceSet {
         #expect(await Poller(model: m, sources: g).pollOnce(.mail) == 42)
         var h = FakeSources(); h.mail = { _ in throw GraphError.consentRequired }
         _ = await Poller(model: m, sources: h).pollOnce(.mail)
-        #expect(m.status[.mail] == .consentRequired)
+        #expect(m.status[.mail] == .error("Consent required"))
     }
 
     @Test func sourceSetCachedSoMeFetchedOnce() async {
@@ -184,12 +184,12 @@ struct FakeSources: SourceSet {
         let m = model()
         var f = FakeSources(); f.mail = { _ in throw GraphError.unauthorized }
         _ = await Poller(model: m, sources: f, now: { now }).pollOnce(.mail)
-        #expect(m.status[.mail] == .signedOut)
+        #expect(m.status[.mail] == .error("Signed out"))
     }
 
     @Test func noOAuthMeansSignedOut() async {
         let m = model()
         _ = await Poller(model: m).pollOnce(.teams)
-        #expect(m.status[.teams] == .signedOut)
+        #expect(m.status[.teams] == .error("Signed out"))
     }
 }

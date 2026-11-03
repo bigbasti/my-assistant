@@ -150,6 +150,6 @@ public final class SettingsController {
     }
 
     public var consentRequiredSources: [SourceKind] {
-        SourceKind.allCases.filter { model.status[$0] == .consentRequired }
+        SourceKind.allCases.filter { model.status[$0] == .error("Consent required") }
     }
 }

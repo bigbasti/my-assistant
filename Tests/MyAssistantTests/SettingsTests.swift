@@ -156,7 +156,7 @@ final class FakeLoginItem: LoginItem {
 
     @Test func consentRequiredSurfacesFromStatus() {
         let (c, _, m) = make()
-        m.status[.teams] = .consentRequired
+        m.status[.teams] = .error("Consent required")
         #expect(c.consentRequiredSources == [.teams])
     }
 }

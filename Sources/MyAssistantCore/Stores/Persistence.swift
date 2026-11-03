@@ -31,6 +31,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
     public var teamsLastSeen: [String: String] = [:]
     public var dock: DockPlacement?
     public var settings = AppSettings()
+    public var alertsBootstrapped = false
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +44,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
         teamsLastSeen = try c.decodeIfPresent([String: String].self, forKey: .teamsLastSeen) ?? [:]
         dock = try c.decodeIfPresent(DockPlacement.self, forKey: .dock)
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
+        alertsBootstrapped = try c.decodeIfPresent(Bool.self, forKey: .alertsBootstrapped) ?? false
     }
 }
 

@@ -92,10 +92,11 @@ private struct SourcesTab: View {
         switch s {
         case nil: "—"
         case .disabled: "Disabled"
-        case .signedOut: "Signed out"
+        case .noAlertsYet: "No alerts yet"
+        case .needsFullDiskAccess: "Full Disk Access needed"
+        case .needsCalendarAccess: "Calendar access needed"
         case .ok(let d): "Updated \(d.formatted(date: .omitted, time: .standard))"
         case .error(let m): "Error: \(m)"
-        case .consentRequired: "Consent required"
         }
     }
 }

@@ -89,8 +89,10 @@ public struct RootView: View {
         switch s {
         case .ok: (.green, "OK")
         case .error(let m): (.orange, m)
-        case .consentRequired: (.orange, "Consent required")
-        case .signedOut, .none: (.gray, "Signed out")
+        case .noAlertsYet: (.green, "No alerts yet")
+        case .needsFullDiskAccess: (.orange, "Full Disk Access needed")
+        case .needsCalendarAccess: (.orange, "Calendar access needed")
+        case .none: (.gray, "—")
         case .disabled: (.gray, "Disabled")
         }
     }
