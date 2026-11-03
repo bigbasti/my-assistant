@@ -60,8 +60,14 @@ public enum CalendarMapping {
         for m in wrapped.matches(in: t, range: NSRange(location: 0, length: ns.length)).reversed() {
             let head = ns.substring(with: m.range(at: 1))
             let headRange = NSRange(location: 0, length: (head as NSString).length)
-            if completeTeams.firstMatch(in: head, range: headRange) != nil { continue }
-            let joined = head + ns.substring(with: m.range(at: 2))
+            let tail = ns.substring(with: m.range(at: 2))
+            if completeTeams.firstMatch(in: head, range: headRange) != nil {
+                // Complete path: only a mid-query break (`?con\ntext=...`) continues on the next line.
+                let looksLikeQuery = head.contains("?") && !tail.lowercased().hasPrefix("http")
+                    && tail.contains(where: { "=&%".contains($0) })
+                if !looksLikeQuery { continue }
+            }
+            let joined = head + tail
             t = (t as NSString).replacingCharacters(in: m.range, with: joined)
         }
         return t

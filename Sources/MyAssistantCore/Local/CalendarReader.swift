@@ -17,7 +17,7 @@ public final class CalendarReader {
     private var timer: DispatchSourceTimer?
     private var midnight: DispatchWorkItem?
 
-    public init(model: AppModel, store: EKEventStore = .init(), now: @escaping () -> Date = Date.init, calendar: Calendar = .current) {
+    public init(model: AppModel, store: EKEventStore = .init(), now: @escaping () -> Date = Date.init, calendar: Calendar = .autoupdatingCurrent) {
         self.calendar = calendar
         self.model = model
         self.store = store
@@ -99,7 +99,7 @@ public final class CalendarReader {
             do {
                 let granted = try await store.requestFullAccessToEvents()
                 guard gen == generation else { return }
-                if granted { read() } else { model.status[.calendar] = .needsCalendarAccess }
+                if granted { read(generation: gen) } else { model.status[.calendar] = .needsCalendarAccess }
             } catch {
                 guard gen == generation else { return }
                 model.status[.calendar] = .error("Calendar access request failed")
@@ -111,7 +111,8 @@ public final class CalendarReader {
         }
     }
 
-    private func read() {
+    private func read(generation gen: Int? = nil) {
+        if let gen, gen != generation { return }
         let date = now()
         let range = CalendarMapping.dayRange(now: date, calendar: calendar)
         let predicate = store.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
@@ -147,6 +148,10 @@ public final class CalendarReader {
 
 extension CalendarReader {
     fileprivate func kick() {
-        kickTask = Task { [weak self] in await self?.refresh() }
+        kickTask?.cancel()
+        kickTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
+        }
     }
 }

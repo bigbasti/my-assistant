@@ -87,4 +87,9 @@ import Foundation
         let safe = "https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.com%2Fx&data=1"
         #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: safe) == nil)
     }
+
+    @Test func teamsLinkWrappedMidQuery() {
+        let notes = "Join: https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?con\ntext=%7b%7d\nMeeting ID: 1"
+        #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: notes) == URL(string: Self.teamsURL))
+    }
 }
