@@ -6,7 +6,12 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let reserver = ScreenReserver()
     let model = AppModel(persistence: Persistence(url: Persistence.defaultURL))
-    lazy var poller = Poller(model: model)
+    lazy var coordinator = SourceCoordinator(
+        model: model,
+        watcher: NotificationWatcher(model: model, read: { ids throws(NotificationDBError) in
+            try NotificationDatabase().read(bundleIDs: ids)
+        }),
+        calendar: CalendarReader(model: model))
     lazy var dock: DockController = {
         let d = DockController(content: RootView(model: model), placement: model.state.dock)
         if model.settings.reserveScreenSpace { d.reserver = reserver }
@@ -19,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     lazy var settingsController = SettingsController(
         model: model,
-        restartPoller: { [poller] in poller.start() },
+        restartSources: { [coordinator] in coordinator.restart() },
         dockTo: { [dock] edge in
             dock.dock(to: DockPlacement(screenID: dock.placement.screenID, edge: edge), animated: true)
         },
@@ -36,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         dock.show()
         model.startTimer()
-        poller.start()
+        coordinator.start()
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {

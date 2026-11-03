@@ -9,7 +9,6 @@ public final class AppModel {
     public let notifications: NotificationStore
     public let events: EventStore
     public var status: [SourceKind: SourceStatus] = [:]
-    @ObservationIgnored public private(set) var oauth: OAuth?
     @ObservationIgnored public var playTone: @MainActor () -> Void = { AppModel.playChime() }
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private let clock: () -> Date
@@ -21,7 +20,7 @@ public final class AppModel {
         set { state.settings = newValue }
     }
 
-    public init(persistence: Persistence, transport: HTTPTransport = URLSession.shared,
+    public init(persistence: Persistence,
                 now: @escaping () -> Date = { Date() }) {
         self.persistence = persistence
         self.clock = now
@@ -29,14 +28,8 @@ public final class AppModel {
         self.state = s
         notifications = NotificationStore(state: s, now: now)
         events = EventStore(state: s, now: now)
-        rebuildOAuth(transport: transport)
         notifications.onChange = { [weak self] in self?.save() }
         events.onChange = { [weak self] in self?.save() }
-    }
-
-    public func rebuildOAuth(transport: HTTPTransport = URLSession.shared) {
-        let s = state.settings
-        oauth = s.clientID.isEmpty ? nil : OAuth(clientID: s.clientID, tenantID: s.tenantID, transport: transport)
     }
 
     private func exported() -> PersistedState {
@@ -94,11 +87,6 @@ public final class AppModel {
                                  organizer: "Organizer \(i + 1)", webLink: u, joinURL: i % 2 == 0 ? u : nil)
         })
         tickCount &+= 1
-    }
-
-    public func clearSyncState() {
-        state.deltaLinks = [:]
-        state.teamsLastSeen = [:]
     }
 
     public func save() { persistence.scheduleSave(exported()) }

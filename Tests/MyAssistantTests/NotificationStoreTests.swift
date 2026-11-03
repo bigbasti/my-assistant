@@ -79,22 +79,16 @@ import Foundation
         var st = PersistedState()
         st.notifications = [n("a")]
         st.handledIDs = ["x"]
-        st.teamsLastSeen = ["c": "m"]
-        st.deltaLinks = ["mail": URL(string: "https://e.com/d")!]
-        st.settings.clientID = "cid"
         st.dock = DockPlacement(screenID: 1, edge: .left)
         p.save(st)
         let back = p.load()
         #expect(back.notifications == st.notifications)
         #expect(back.handledIDs == ["x"])
-        #expect(back.teamsLastSeen == ["c": "m"])
-        #expect(back.deltaLinks == st.deltaLinks)
-        #expect(back.settings.clientID == "cid")
         #expect(back.dock == st.dock)
     }
     @Test func decodesMissingKeysWithDefaults() throws {
         let st = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
-        #expect(st.settings.tenantID == "organizations" && st.notifications.isEmpty)
+        #expect(st.settings == AppSettings() && st.notifications.isEmpty)
     }
     @Test func flushCancelsPendingAndWritesSynchronously() {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

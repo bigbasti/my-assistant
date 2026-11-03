@@ -8,60 +8,12 @@ public struct SettingsView: View {
 
     public var body: some View {
         TabView {
-            AccountsTab(c: controller)
-                .tabItem { Label("Accounts", systemImage: "person.crop.circle") }
             SourcesTab(c: controller)
                 .tabItem { Label("Sources", systemImage: "tray.full") }
             GeneralTab(c: controller)
                 .tabItem { Label("General", systemImage: "gearshape") }
         }
         .frame(width: 480, height: 400)
-    }
-}
-
-private struct AccountsTab: View {
-    let c: SettingsController
-    @State private var clientID = ""
-    @State private var tenantID = ""
-    @FocusState private var focus: Field?
-    private enum Field { case client, tenant }
-
-    private func commit() { Task { await c.applyAccount(clientID: clientID, tenantID: tenantID) } }
-
-    var body: some View {
-        Form {
-            Section("Microsoft Entra app") {
-                TextField("Client ID", text: $clientID).focused($focus, equals: .client)
-                TextField("Tenant ID", text: $tenantID).focused($focus, equals: .tenant)
-                if clientID != c.model.settings.clientID || tenantID != c.model.settings.tenantID {
-                    Text("Changing these signs you out.").font(.callout).foregroundStyle(.secondary)
-                }
-                Text("Register an app in Entra ID as a public client with redirect URI myassistant://auth and delegated permissions User.Read, Mail.Read, Calendars.Read, Chat.Read and offline_access.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            Section("Account") {
-                if let upn = c.upn {
-                    LabeledContent("Signed in as", value: upn)
-                }
-                HStack {
-                    Button("Sign in") { Task { await c.applyAccount(clientID: clientID, tenantID: tenantID); await c.signIn() } }.disabled(c.isSigningIn)
-                    Button("Sign out") { Task { await c.signOut() } }
-                    if c.isSigningIn { ProgressView().controlSize(.small) }
-                }
-                if let e = c.signInError {
-                    Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                }
-                if !c.consentRequiredSources.isEmpty {
-                    Label("Consent required: an administrator must grant permissions for \(c.consentRequiredSources.map(\.rawValue).joined(separator: ", ")).",
-                          systemImage: "lock.shield").foregroundStyle(.orange)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear { clientID = c.model.settings.clientID; tenantID = c.model.settings.tenantID }
-        .onSubmit { commit() }
-        .onChange(of: focus) { _, _ in commit() }
-        .task { await c.loadUPN() }
     }
 }
 

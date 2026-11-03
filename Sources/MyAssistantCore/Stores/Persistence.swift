@@ -2,8 +2,6 @@ import Foundation
 import os
 
 public struct AppSettings: Codable, Equatable, Sendable {
-    public var clientID = ""
-    public var tenantID = "organizations"
     public var enabled: Set<SourceKind> = Set(SourceKind.allCases)
     public var launchAtLogin = false
     public var reserveScreenSpace = true
@@ -12,8 +10,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        clientID = try c.decodeIfPresent(String.self, forKey: .clientID) ?? ""
-        tenantID = try c.decodeIfPresent(String.self, forKey: .tenantID) ?? "organizations"
         enabled = try c.decodeIfPresent(Set<SourceKind>.self, forKey: .enabled) ?? Set(SourceKind.allCases)
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         reserveScreenSpace = try c.decodeIfPresent(Bool.self, forKey: .reserveScreenSpace) ?? true
@@ -27,8 +23,6 @@ public struct PersistedState: Codable, Equatable, Sendable {
     /// Insertion order of `handledIDs`, used to trim the oldest when capped.
     public var handledOrder: [String] = []
     public var dismissedEventIDs: Set<String> = []
-    public var deltaLinks: [String: URL] = [:]
-    public var teamsLastSeen: [String: String] = [:]
     public var dock: DockPlacement?
     public var settings = AppSettings()
     public var alertsBootstrapped = false
@@ -40,8 +34,6 @@ public struct PersistedState: Codable, Equatable, Sendable {
         handledIDs = try c.decodeIfPresent(Set<String>.self, forKey: .handledIDs) ?? []
         handledOrder = try c.decodeIfPresent([String].self, forKey: .handledOrder) ?? []
         dismissedEventIDs = try c.decodeIfPresent(Set<String>.self, forKey: .dismissedEventIDs) ?? []
-        deltaLinks = try c.decodeIfPresent([String: URL].self, forKey: .deltaLinks) ?? [:]
-        teamsLastSeen = try c.decodeIfPresent([String: String].self, forKey: .teamsLastSeen) ?? [:]
         dock = try c.decodeIfPresent(DockPlacement.self, forKey: .dock)
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
         alertsBootstrapped = try c.decodeIfPresent(Bool.self, forKey: .alertsBootstrapped) ?? false
