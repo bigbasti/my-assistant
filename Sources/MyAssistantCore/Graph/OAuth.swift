@@ -26,12 +26,28 @@ public enum OAuthRequests {
     public static let scopes = "offline_access User.Read Mail.Read Calendars.Read Chat.Read"
     public static let redirect = "myassistant://auth"
 
-    static func endpoint(_ tenant: String, _ name: String) -> URL {
-        URL(string: "https://login.microsoftonline.com/\(tenant)/oauth2/v2.0/\(name)")!
+    static func validate(clientID: String, tenantID: String) throws {
+        let pattern = "^[A-Za-z0-9.-]+$"
+        guard tenantID.range(of: pattern, options: .regularExpression) != nil else {
+            throw GraphError.invalidConfiguration("Invalid tenant ID")
+        }
+        guard clientID.range(of: pattern, options: .regularExpression) != nil else {
+            throw GraphError.invalidConfiguration("Invalid client ID")
+        }
     }
 
-    public static func authorizeURL(clientID: String, tenantID: String, challenge: String, state: String) -> URL {
-        var c = URLComponents(url: endpoint(tenantID, "authorize"), resolvingAgainstBaseURL: false)!
+    static func endpoint(_ tenant: String, _ name: String) throws -> URL {
+        var c = URLComponents()
+        c.scheme = "https"
+        c.host = "login.microsoftonline.com"
+        c.path = "/\(tenant)/oauth2/v2.0/\(name)"
+        guard let u = c.url else { throw GraphError.invalidConfiguration("Invalid tenant ID") }
+        return u
+    }
+
+    public static func authorizeURL(clientID: String, tenantID: String, challenge: String, state: String) throws -> URL {
+        try validate(clientID: clientID, tenantID: tenantID)
+        var c = URLComponents(url: try endpoint(tenantID, "authorize"), resolvingAgainstBaseURL: false)!
         c.queryItems = [
             .init(name: "client_id", value: clientID),
             .init(name: "response_type", value: "code"),
@@ -42,7 +58,8 @@ public enum OAuthRequests {
             .init(name: "code_challenge_method", value: "S256"),
             .init(name: "state", value: state),
         ]
-        return c.url!
+        guard let u = c.url else { throw GraphError.invalidConfiguration("Invalid authorize URL") }
+        return u
     }
 
     static func form(_ url: URL, _ fields: [(String, String)]) -> URLRequest {
@@ -56,15 +73,17 @@ public enum OAuthRequests {
         return r
     }
 
-    public static func exchange(clientID: String, tenantID: String, code: String, verifier: String) -> URLRequest {
-        form(endpoint(tenantID, "token"), [
+    public static func exchange(clientID: String, tenantID: String, code: String, verifier: String) throws -> URLRequest {
+        try validate(clientID: clientID, tenantID: tenantID)
+        return form(try endpoint(tenantID, "token"), [
             ("client_id", clientID), ("grant_type", "authorization_code"), ("code", code),
             ("redirect_uri", redirect), ("code_verifier", verifier), ("scope", scopes),
         ])
     }
 
-    public static func refresh(clientID: String, tenantID: String, refreshToken: String) -> URLRequest {
-        form(endpoint(tenantID, "token"), [
+    public static func refresh(clientID: String, tenantID: String, refreshToken: String) throws -> URLRequest {
+        try validate(clientID: clientID, tenantID: tenantID)
+        return form(try endpoint(tenantID, "token"), [
             ("client_id", clientID), ("grant_type", "refresh_token"),
             ("refresh_token", refreshToken), ("scope", scopes),
         ])
@@ -85,6 +104,7 @@ public actor OAuth: TokenProvider {
     private let store: SecretStore
     private var cached: TokenSet?
     private var inFlight: Task<TokenSet, Error>?
+    private var generation = 0
 
     public init(clientID: String, tenantID: String, transport: HTTPTransport, store: SecretStore = KeychainSecretStore()) {
         self.clientID = clientID
@@ -95,44 +115,53 @@ public actor OAuth: TokenProvider {
 
     public func accessToken(forceRefresh: Bool) async throws -> String {
         if !forceRefresh, let c = cached, c.expiresAt.timeIntervalSinceNow > 60 { return c.accessToken }
-        if let t = inFlight { return try await t.value.accessToken }
+        let gen = generation
+        if let t = inFlight {
+            let tokens = try await t.value
+            guard generation == gen else { throw GraphError.signedOut }
+            return tokens.accessToken
+        }
         guard let rt = store.get(account: Self.account) else { throw GraphError.signedOut }
-        let req = OAuthRequests.refresh(clientID: clientID, tenantID: tenantID, refreshToken: rt)
+        let req = try OAuthRequests.refresh(clientID: clientID, tenantID: tenantID, refreshToken: rt)
         let transport = self.transport
         let task = Task { try await Self.run(req, transport) }
         inFlight = task
-        defer { inFlight = nil }
+        defer { if generation == gen { inFlight = nil } }
         let t = try await task.value
-        accept(t)
+        guard generation == gen else { throw GraphError.signedOut }
+        try accept(t)
         return t.accessToken
     }
 
     private static func run(_ req: URLRequest, _ transport: HTTPTransport) async throws -> TokenSet {
         let (data, resp) = try await transport.send(req)
         guard (200..<300).contains(resp.statusCode) else {
-            throw resp.statusCode == 400 || resp.statusCode == 401 ? GraphError.unauthorized : GraphError.http(resp.statusCode)
+            struct E: Decodable { let error: String? }
+            let code = (try? JSONDecoder().decode(E.self, from: data))?.error
+            throw code == "invalid_grant" ? GraphError.unauthorized : GraphError.http(resp.statusCode)
         }
         return try OAuthRequests.parseTokens(data, now: Date())
     }
 
-    private func accept(_ t: TokenSet) {
+    private func accept(_ t: TokenSet) throws {
+        if let r = t.refreshToken { try store.set(r, account: Self.account) }
         cached = t
-        if let r = t.refreshToken { store.set(r, account: Self.account) }
     }
 
     public func signIn() async throws {
         let verifier = PKCE.verifier()
         let state = PKCE.verifier()
-        let url = OAuthRequests.authorizeURL(clientID: clientID, tenantID: tenantID, challenge: PKCE.challenge(for: verifier), state: state)
+        let url = try OAuthRequests.authorizeURL(clientID: clientID, tenantID: tenantID, challenge: PKCE.challenge(for: verifier), state: state)
         let callback = try await AuthSessionRunner.run(url: url)
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard items.first(where: { $0.name == "state" })?.value == state,
               let code = items.first(where: { $0.name == "code" })?.value else { throw GraphError.unauthorized }
-        let t = try await Self.run(OAuthRequests.exchange(clientID: clientID, tenantID: tenantID, code: code, verifier: verifier), transport)
-        accept(t)
+        let t = try await Self.run(try OAuthRequests.exchange(clientID: clientID, tenantID: tenantID, code: code, verifier: verifier), transport)
+        try accept(t)
     }
 
     public func signOut() {
+        generation += 1
         cached = nil
         inFlight?.cancel()
         inFlight = nil

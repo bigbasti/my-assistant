@@ -22,6 +22,7 @@ public enum GraphError: Error, Equatable {
     case http(Int)
     case consentRequired
     case signedOut
+    case invalidConfiguration(String)
 }
 
 public struct GraphClient: Sendable {
@@ -42,6 +43,9 @@ public struct GraphClient: Sendable {
 
     func rawGet(_ urlOrPath: String, headers: [String: String]) async throws -> Data {
         let url = try url(for: urlOrPath)
+        guard url.scheme == "https", url.host?.lowercased() == "graph.microsoft.com" else {
+            throw GraphError.invalidConfiguration("Refusing to send token to \(url.host ?? "unknown host")")
+        }
         var refreshed = false
         while true {
             var req = URLRequest(url: url)
@@ -56,7 +60,7 @@ public struct GraphClient: Sendable {
                 refreshed = true
             case 403: throw GraphError.consentRequired
             case 429, 503:
-                if let ra = resp.value(forHTTPHeaderField: "Retry-After"), let secs = TimeInterval(ra) {
+                if let secs = Self.parseRetryAfter(resp.value(forHTTPHeaderField: "Retry-After"), now: Date()) {
                     throw GraphError.throttled(retryAfter: secs)
                 }
                 throw GraphError.http(resp.statusCode)
@@ -64,6 +68,19 @@ public struct GraphClient: Sendable {
             }
         }
     }
+
+    static func parseRetryAfter(_ value: String?, now: Date) -> TimeInterval? {
+        guard let v = value?.trimmingCharacters(in: .whitespaces), !v.isEmpty else { return nil }
+        if let secs = TimeInterval(v) { return max(0, secs) }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = f.date(from: v) else { return nil }
+        return max(0, date.timeIntervalSince(now))
+    }
+
+    static let maxDeltaPages = 100
 
     public func get<T: Decodable>(_ urlOrPath: String, as: T.Type, headers: [String: String] = [:]) async throws -> T {
         try JSONDecoder().decode(T.self, from: try await rawGet(urlOrPath, headers: headers))
@@ -84,13 +101,17 @@ public struct GraphClient: Sendable {
         var next = deltaLink?.absoluteString ?? start
         var items: [T] = []
         var restarted = deltaLink == nil
+        var pages = 0
         while true {
+            if pages >= Self.maxDeltaPages { throw GraphError.http(508) }
+            pages += 1
             let data: Data
             do {
                 data = try await rawGet(next, headers: headers)
             } catch GraphError.http(410) where !restarted {
                 restarted = true
                 items = []
+                pages = 0
                 next = start
                 continue
             }

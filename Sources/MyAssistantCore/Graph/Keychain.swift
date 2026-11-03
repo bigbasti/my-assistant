@@ -3,9 +3,11 @@ import Security
 
 public protocol SecretStore: Sendable {
     func get(account: String) -> String?
-    func set(_ value: String, account: String)
+    func set(_ value: String, account: String) throws
     func delete(account: String)
 }
+
+public struct KeychainError: Error, Equatable { public let status: OSStatus }
 
 public struct KeychainSecretStore: SecretStore {
     public static let service = "de.sebastiangross.MyAssistant"
@@ -26,14 +28,16 @@ public struct KeychainSecretStore: SecretStore {
         return String(data: d, encoding: .utf8)
     }
 
-    public func set(_ value: String, account: String) {
+    public func set(_ value: String, account: String) throws {
         let data = Data(value.utf8)
-        let status = SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        let attrs: [String: Any] = [kSecValueData as String: data,
+                                    kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock]
+        var status = SecItemUpdate(query(account) as CFDictionary, attrs as CFDictionary)
         if status == errSecItemNotFound {
-            var q = query(account)
-            q[kSecValueData as String] = data
-            SecItemAdd(q as CFDictionary, nil)
+            let q = query(account).merging(attrs) { $1 }
+            status = SecItemAdd(q as CFDictionary, nil)
         }
+        if status != errSecSuccess { throw KeychainError(status: status) }
     }
 
     public func delete(account: String) {
@@ -46,6 +50,6 @@ public final class InMemorySecretStore: SecretStore, @unchecked Sendable {
     private var values: [String: String] = [:]
     public init() {}
     public func get(account: String) -> String? { lock.lock(); defer { lock.unlock() }; return values[account] }
-    public func set(_ value: String, account: String) { lock.lock(); defer { lock.unlock() }; values[account] = value }
+    public func set(_ value: String, account: String) throws { lock.lock(); defer { lock.unlock() }; values[account] = value }
     public func delete(account: String) { lock.lock(); defer { lock.unlock() }; values[account] = nil }
 }

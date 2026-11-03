@@ -80,6 +80,31 @@ struct Page: Decodable { let value: [Item] }
         await #expect(throws: GraphError.throttled(retryAfter: 7)) { let _: Page = try await c.get("/me", as: Page.self) }
     }
 
+    @Test func retryAfterHttpDateIsParsed() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let v = GraphClient.parseRetryAfter(f.string(from: now.addingTimeInterval(30)), now: now)
+        #expect(v == 30)
+        #expect(GraphClient.parseRetryAfter("garbage", now: now) == nil)
+    }
+
+    @Test func tokenIsNeverSentToForeignHosts() async {
+        let t = MockTransport([])
+        let c = GraphClient(tokens: MockTokens(), transport: t)
+        for u in ["https://evil.example.com/x", "http://graph.microsoft.com/v1.0/me", "https://graph.microsoft.com.evil.com/x"] {
+            await #expect(throws: GraphError.self) { let _: Page = try await c.get(u, as: Page.self) }
+        }
+        #expect(t.requests.isEmpty)
+    }
+
+    @Test func deltaPagingIsCapped() async {
+        let page = #"{"value":[],"@odata.nextLink":"https://graph.microsoft.com/v1.0/n"}"#
+        let t = MockTransport(Array(repeating: (200, page, [:]), count: 100))
+        let c = GraphClient(tokens: MockTokens(), transport: t)
+        await #expect(throws: GraphError.http(508)) { let _: (items: [Item], deltaLink: URL) = try await c.delta(start: "/s", deltaLink: nil) }
+    }
+
     @Test func forbiddenMapsToConsentRequired() async {
         let t = MockTransport([(403, "{}", [:])])
         let c = GraphClient(tokens: MockTokens(), transport: t)
@@ -98,7 +123,7 @@ struct Page: Decodable { let value: [Item] }
 
 @Suite struct OAuthTests {
     @Test func authorizeURLHasPKCEParams() throws {
-        let u = OAuthRequests.authorizeURL(clientID: "cid", tenantID: "ten", challenge: "chal", state: "st")
+        let u = try OAuthRequests.authorizeURL(clientID: "cid", tenantID: "ten", challenge: "chal", state: "st")
         let items = URLComponents(url: u, resolvingAgainstBaseURL: false)!.queryItems!
         func v(_ n: String) -> String? { items.first { $0.name == n }?.value }
         #expect(u.absoluteString.hasPrefix("https://login.microsoftonline.com/ten/oauth2/v2.0/authorize"))
@@ -107,13 +132,13 @@ struct Page: Decodable { let value: [Item] }
         #expect(v("scope") == "offline_access User.Read Mail.Read Calendars.Read Chat.Read")
     }
 
-    @Test func tokenRequestBuilders() {
-        let ex = OAuthRequests.exchange(clientID: "cid", tenantID: "ten", code: "c0", verifier: "ver")
+    @Test func tokenRequestBuilders() throws {
+        let ex = try OAuthRequests.exchange(clientID: "cid", tenantID: "ten", code: "c0", verifier: "ver")
         #expect(ex.url!.absoluteString == "https://login.microsoftonline.com/ten/oauth2/v2.0/token")
         let body = String(data: ex.httpBody!, encoding: .utf8)!
         #expect(ex.httpMethod == "POST")
         #expect(body.contains("grant_type=authorization_code") && body.contains("code_verifier=ver") && body.contains("code=c0"))
-        let rf = OAuthRequests.refresh(clientID: "cid", tenantID: "ten", refreshToken: "rt")
+        let rf = try OAuthRequests.refresh(clientID: "cid", tenantID: "ten", refreshToken: "rt")
         let rb = String(data: rf.httpBody!, encoding: .utf8)!
         #expect(rb.contains("grant_type=refresh_token") && rb.contains("refresh_token=rt"))
     }
@@ -130,7 +155,7 @@ struct Page: Decodable { let value: [Item] }
 
     @Test func refreshesOnceForConcurrentCallsAndCaches() async throws {
         let store = InMemorySecretStore()
-        store.set("rt", account: "refresh_token")
+        try store.set("rt", account: "refresh_token")
         let t = MockTransport([(200, #"{"access_token":"A","refresh_token":"R2","expires_in":3600}"#, [:])])
         let o = OAuth(clientID: "c", tenantID: "t", transport: t, store: store)
         async let a = o.accessToken(forceRefresh: false)
@@ -140,5 +165,72 @@ struct Page: Decodable { let value: [Item] }
         _ = try await o.accessToken(forceRefresh: false)
         #expect(t.requests.count == 1)
         #expect(store.get(account: "refresh_token") == "R2")
+    }
+
+    @Test func invalidTenantAndClientAreRejected() async {
+        for bad in ["a b", "x/../y", "", "t?x=1", "a%2Fb"] {
+            #expect(throws: GraphError.self) { _ = try OAuthRequests.authorizeURL(clientID: "c", tenantID: bad, challenge: "x", state: "s") }
+            #expect(throws: GraphError.self) { _ = try OAuthRequests.refresh(clientID: "c", tenantID: bad, refreshToken: "r") }
+        }
+        #expect(throws: GraphError.self) { _ = try OAuthRequests.exchange(clientID: "", tenantID: "common", code: "c", verifier: "v") }
+        for ok in ["common", "organizations", "contoso.onmicrosoft.com", "72f988bf-86f1-41af-91ab-2d7cd011db47"] {
+            #expect(throws: Never.self) { _ = try OAuthRequests.refresh(clientID: "c", tenantID: ok, refreshToken: "r") }
+        }
+        let store = InMemorySecretStore()
+        try? store.set("rt", account: "refresh_token")
+        let o = OAuth(clientID: "c", tenantID: "bad tenant", transport: MockTransport([]), store: store)
+        await #expect(throws: GraphError.invalidConfiguration("Invalid tenant ID")) { _ = try await o.accessToken(forceRefresh: false) }
+    }
+
+    @Test func refreshBadRequestMapsByErrorCode() async throws {
+        for (body, expected) in [(#"{"error":"invalid_grant"}"#, GraphError.unauthorized), (#"{"error":"invalid_request"}"#, GraphError.http(400))] {
+            let store = InMemorySecretStore()
+            try store.set("rt", account: "refresh_token")
+            let o = OAuth(clientID: "c", tenantID: "t", transport: MockTransport([(400, body, [:])]), store: store)
+            await #expect(throws: expected) { _ = try await o.accessToken(forceRefresh: false) }
+        }
+    }
+
+    @Test func signOutDuringInFlightRefreshDoesNotResurrectTokens() async throws {
+        let store = InMemorySecretStore()
+        try store.set("rt", account: "refresh_token")
+        let gate = GatedTransport(#"{"access_token":"A","refresh_token":"R2","expires_in":3600}"#)
+        let o = OAuth(clientID: "c", tenantID: "t", transport: gate, store: store)
+        let pending = Task { try await o.accessToken(forceRefresh: false) }
+        await gate.waitUntilEntered()
+        await o.signOut()
+        gate.release()
+        await #expect(throws: GraphError.signedOut) { _ = try await pending.value }
+        #expect(store.get(account: "refresh_token") == nil)
+        await #expect(throws: GraphError.signedOut) { _ = try await o.accessToken(forceRefresh: false) }
+    }
+}
+
+final class GatedTransport: HTTPTransport, @unchecked Sendable {
+    private let body: String
+    private let lock = NSLock()
+    private var entered: CheckedContinuation<Void, Never>?
+    private var hasEntered = false
+    private var gate: CheckedContinuation<Void, Never>?
+    private var released = false
+    init(_ body: String) { self.body = body }
+    func send(_ r: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let e = lock.withLock { () -> CheckedContinuation<Void, Never>? in hasEntered = true; defer { entered = nil }; return entered }
+        e?.resume()
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in if released { return true }; gate = c; return false }
+            if now { c.resume() }
+        }
+        return (Data(body.utf8), HTTPURLResponse(url: r.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    func waitUntilEntered() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in if hasEntered { return true }; entered = c; return false }
+            if now { c.resume() }
+        }
+    }
+    func release() {
+        let g = lock.withLock { () -> CheckedContinuation<Void, Never>? in released = true; defer { gate = nil }; return gate }
+        g?.resume()
     }
 }
