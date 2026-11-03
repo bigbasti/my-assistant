@@ -12,6 +12,7 @@
 	<key>LSMinimumSystemVersion</key><string>26.0</string>
 	<key>LSUIElement</key><true/>
 	<key>NSAppleEventsUsageDescription</key><string>My Assistant opens Teams and Outlook items on your behalf.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key><string>My Assistant shows today's meetings from your calendars.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

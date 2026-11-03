@@ -5,7 +5,8 @@ public enum Diagnostics {
     private static let log = Logger(subsystem: "de.sebastiangross.MyAssistant", category: "diagnostics")
 
     /// Logs structure only (presence flags), never notification content.
-    public static func dumpSources() {
+    @MainActor public static func dumpSources() {
+        for line in CalendarReader.diagnostics() { log.info("\(line, privacy: .public)") }
         let bundles = ["com.microsoft.teams2", "com.microsoft.outlook"]
         do {
             let all = try NotificationDatabase().read(bundleIDs: bundles)
