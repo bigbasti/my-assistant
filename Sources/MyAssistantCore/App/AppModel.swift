@@ -96,6 +96,11 @@ public final class AppModel {
         tickCount &+= 1
     }
 
+    public func clearSyncState() {
+        state.deltaLinks = [:]
+        state.teamsLastSeen = [:]
+    }
+
     public func save() { persistence.scheduleSave(exported()) }
     public func flush() { persistence.flush(exported()) }
 }

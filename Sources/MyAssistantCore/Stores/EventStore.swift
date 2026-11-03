@@ -21,7 +21,12 @@ public final class EventStore {
             .sorted { $0.start < $1.start }
     }
 
-    public func replace(_ new: [CalendarEvent]) { events = new }
+    public func replace(_ new: [CalendarEvent]) {
+        events = new
+        let ids = Set(new.map(\.id))
+        let kept = dismissed.intersection(ids)
+        if kept != dismissed { dismissed = kept; onChange?() }
+    }
 
     public func dismiss(_ id: String) {
         guard dismissed.insert(id).inserted else { return }

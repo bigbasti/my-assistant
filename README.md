@@ -28,3 +28,7 @@ Register an app in Microsoft Entra ID:
 ## Accessibility
 
 "Reserve screen space" moves other apps' windows out of the dock strip. Grant My Assistant access in System Settings → Privacy & Security → Accessibility.
+
+## Rebuild note
+
+Ad-hoc signed rebuilds change the app's code identity, which resets the Accessibility and Keychain permissions. Grant them again after every rebuild.

@@ -57,6 +57,7 @@ public final class SettingsController {
         await signOutHook(model.oauth)
         model.settings.clientID = id
         model.settings.tenantID = tenant
+        model.clearSyncState()
         model.rebuildOAuth()
         upn = nil
         signInError = nil
@@ -134,8 +135,10 @@ public final class SettingsController {
 
     public func signOut() async {
         await signOutHook(model.oauth)
+        model.clearSyncState()
         upn = nil
         signInError = nil
+        changed()
         restartPoller()
     }
 

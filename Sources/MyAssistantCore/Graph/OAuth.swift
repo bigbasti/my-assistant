@@ -27,11 +27,15 @@ public enum OAuthRequests {
     public static let redirect = "myassistant://auth"
 
     static func validate(clientID: String, tenantID: String) throws {
-        let pattern = "^[A-Za-z0-9.-]+$"
-        guard tenantID.range(of: pattern, options: .regularExpression) != nil else {
+        let pattern = #"\A[A-Za-z0-9.-]+\z"#
+        func ok(_ v: String) -> Bool {
+            v.range(of: pattern, options: .regularExpression) != nil
+                && !v.contains("..") && !v.allSatisfy { $0 == "." }
+        }
+        guard ok(tenantID) else {
             throw GraphError.invalidConfiguration("Invalid tenant ID")
         }
-        guard clientID.range(of: pattern, options: .regularExpression) != nil else {
+        guard ok(clientID) else {
             throw GraphError.invalidConfiguration("Invalid client ID")
         }
     }

@@ -27,10 +27,14 @@ public struct MailSource: NotificationSource {
     }
 
     public func fetchNew(deltaLink: URL?) async throws -> (items: [AssistantNotification], deltaLink: URL?) {
-        let start = "/me/mailFolders/inbox/messages/delta?$select=subject,from,bodyPreview,webLink,isRead,receivedDateTime"
-        let (msgs, link): ([Message], URL) = try await client.delta(start: start, deltaLink: deltaLink)
         let t = now()
         let cutoff = t.addingTimeInterval(-24 * 3600)
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = TimeZone(identifier: "UTC")
+        let since = iso.string(from: cutoff)
+        let start = "/me/mailFolders/inbox/messages/delta?$filter=receivedDateTime+ge+\(since)&$select=subject,from,bodyPreview,webLink,isRead,receivedDateTime"
+        let (msgs, link): ([Message], URL) = try await client.delta(
+            start: start, deltaLink: deltaLink, headers: ["Prefer": "odata.maxpagesize=50"])
         let first = deltaLink == nil
         var out: [AssistantNotification] = []
         for m in msgs {

@@ -21,7 +21,41 @@ public final class ScreenReserver {
         public init(target: CGRect, resulting: CGRect) { self.target = target; self.resulting = resulting }
     }
 
-    public init() {}
+    private let isTrusted: () -> Bool
+    private var trustTimer: Timer?
+    private var activeToken: NSObjectProtocol?
+
+    public init(isTrusted: @escaping () -> Bool = { AXIsProcessTrusted() }) { self.isTrusted = isTrusted }
+
+    /// Pure decision: should enforcement start now?
+    public nonisolated static func shouldStartEnforcing(trusted: Bool, strip: CGRect?, enforcing: Bool) -> Bool {
+        trusted && strip != nil && !enforcing
+    }
+
+    var isWatchingTrust: Bool { trustTimer != nil }
+
+    /// Re-checks trust; starts enforcement and stops watching once trusted.
+    func recheckTrust() {
+        guard strip != nil, isTrusted() else { return }
+        stopTrustWatch()
+        start()
+        enforceAll()
+    }
+
+    private func startTrustWatch() {
+        guard trustTimer == nil else { return }
+        trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recheckTrust() }
+        }
+        activeToken = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recheckTrust() }
+        }
+    }
+
+    private func stopTrustWatch() {
+        trustTimer?.invalidate(); trustTimer = nil
+        if let t = activeToken { NotificationCenter.default.removeObserver(t); activeToken = nil }
+    }
 
     /// Pure: false when the previous attempt aimed at the same target and the window ended up
     /// exactly where it is now (it refuses to move/resize), so retrying would loop forever.
@@ -51,7 +85,8 @@ public final class ScreenReserver {
         guard strip != nil else { stop(); return }
         let opts = ["AXTrustedCheckOptionPrompt": !prompted] as CFDictionary
         prompted = true
-        guard AXIsProcessTrustedWithOptions(opts) else { return }
+        guard AXIsProcessTrustedWithOptions(opts) else { startTrustWatch(); return }
+        stopTrustWatch()
         start()
         enforceAll()
     }
@@ -77,6 +112,7 @@ public final class ScreenReserver {
     }
 
     private func stop() {
+        stopTrustWatch()
         let nc = NSWorkspace.shared.notificationCenter
         tokens.forEach { nc.removeObserver($0) }
         tokens.removeAll()

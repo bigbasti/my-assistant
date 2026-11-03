@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct AppSettings: Codable, Equatable, Sendable {
     public var clientID = ""
@@ -52,6 +53,8 @@ public final class Persistence: @unchecked Sendable {
     private var generation = 0
     private let queue = DispatchQueue(label: "MyAssistant.persistence")
 
+    private static let log = Logger(subsystem: "de.sebastiangross.MyAssistant", category: "persistence")
+
     public init(url: URL) { self.url = url }
 
     public static var defaultURL: URL {
@@ -60,9 +63,18 @@ public final class Persistence: @unchecked Sendable {
     }
 
     public func load() -> PersistedState {
-        guard let data = try? Data(contentsOf: url),
-              let state = try? JSONDecoder().decode(PersistedState.self, from: data) else { return PersistedState() }
-        return state
+        guard let data = try? Data(contentsOf: url) else { return PersistedState() }
+        do {
+            return try JSONDecoder().decode(PersistedState.self, from: data)
+        } catch {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "yyyyMMdd-HHmmss"
+            let dest = url.deletingLastPathComponent().appendingPathComponent("state.corrupt-\(f.string(from: Date())).json")
+            do { try FileManager.default.moveItem(at: url, to: dest) }
+            catch { Self.log.error("could not quarantine corrupt state: \(error.localizedDescription, privacy: .public)") }
+            return PersistedState()
+        }
     }
 
     public func save(_ state: PersistedState) {
@@ -73,9 +85,13 @@ public final class Persistence: @unchecked Sendable {
     private func write(_ state: PersistedState) {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? enc.encode(state) else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        do {
+            let data = try enc.encode(state)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            Self.log.error("write failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// True while a debounced save is waiting to run.
