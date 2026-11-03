@@ -17,6 +17,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return d
     }()
 
+    lazy var settingsController = SettingsController(
+        model: model,
+        restartPoller: { [poller] in poller.start() },
+        dockTo: { [dock] edge in
+            dock.dock(to: DockPlacement(screenID: dock.placement.screenID, edge: edge), animated: true)
+        },
+        setReserving: { [dock, reserver] on in
+            if on {
+                dock.reserver = reserver
+                dock.dock(to: dock.placement, animated: false)
+            } else {
+                dock.reserver = nil
+                reserver.reserve(nil)
+            }
+        })
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         dock.show()
         model.startTimer()
@@ -44,6 +60,7 @@ struct MyAssistantApp: App {
     var body: some Scene {
         MenuBarExtra("My Assistant", systemImage: "sparkles") {
             SettingsLink { Text("Settings…") }
+                .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
             Button("Dock Left") { dockTo(.left) }
             Button("Dock Right") { dockTo(.right) }
 #if DEBUG
@@ -53,6 +70,6 @@ struct MyAssistantApp: App {
             Divider()
             Button("Quit") { NSApplication.shared.terminate(nil) }
         }
-        Settings { SettingsView() }
+        Settings { SettingsView(controller: delegate.settingsController) }
     }
 }
