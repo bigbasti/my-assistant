@@ -48,6 +48,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// Accessory (menu-bar-only) apps don't come to the front on their own, and gestures
+// attached to menu items never fire, so activate and raise the window explicitly.
+private struct OpenSettingsButton: View {
+    @Environment(\.openSettings) private var openSettings
+    @MainActor private static var closeObserver: NSObjectProtocol?
+
+    var body: some View {
+        Button("Settings…") {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate()
+            openSettings()
+            DispatchQueue.main.async {
+                for window in NSApp.windows where window.identifier?.rawValue.contains("Settings") == true {
+                    window.level = .floating
+                    window.makeKeyAndOrderFront(nil)
+                    window.orderFrontRegardless()
+                    if let token = Self.closeObserver { NotificationCenter.default.removeObserver(token) }
+                    Self.closeObserver = NotificationCenter.default.addObserver(
+                        forName: NSWindow.willCloseNotification, object: window, queue: .main
+                    ) { [weak window] _ in
+                        MainActor.assumeIsolated {
+                            window?.level = .normal
+                            NSApp.setActivationPolicy(.accessory)
+                        }
+                    }
+                }
+            }
+        }
+        .keyboardShortcut(",")
+    }
+}
+
 @main
 struct MyAssistantApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -59,8 +91,7 @@ struct MyAssistantApp: App {
 
     var body: some Scene {
         MenuBarExtra("My Assistant", systemImage: "sparkles") {
-            SettingsLink { Text("Settings…") }
-                .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
+            OpenSettingsButton()
             Button("Dock Left") { dockTo(.left) }
             Button("Dock Right") { dockTo(.right) }
 #if DEBUG
