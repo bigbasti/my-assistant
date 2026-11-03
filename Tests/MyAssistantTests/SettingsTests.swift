@@ -53,6 +53,22 @@ final class FakeLoginItem: LoginItem {
         return (c, e, m)
     }
 
+    @Test func backgroundOpacityDefaultsToClearGlass() throws {
+        let old = #"{"settings":{"playTone":false}}"#.data(using: .utf8)!
+        #expect(try JSONDecoder().decode(PersistedState.self, from: old).settings.backgroundOpacity == 0)
+    }
+
+    @Test func backgroundOpacityIsClampedAndSaved() {
+        let (c, _, m) = make()
+        c.setBackgroundOpacity(0.6)
+        #expect(m.settings.backgroundOpacity == 0.6)
+        c.setBackgroundOpacity(1.7)
+        #expect(m.settings.backgroundOpacity == 1)
+        c.setBackgroundOpacity(-0.2)
+        #expect(m.settings.backgroundOpacity == 0)
+        #expect(m.persistence.hasPendingSave)
+    }
+
     @Test func togglingSourceRestartsSources() {
         let (c, e, m) = make()
         c.setSource(.mail, enabled: false)

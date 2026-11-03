@@ -19,7 +19,12 @@ public struct RootView: View {
             .padding(.horizontal, 8).padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(model.settings.backgroundOpacity * 0.92))
+                .animation(.easeInOut(duration: 0.2), value: model.settings.backgroundOpacity)
+        }
+        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
         .padding(8)
     }
 

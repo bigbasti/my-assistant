@@ -100,6 +100,22 @@ private struct GeneralTab: View {
                 Toggle("Play tone at meeting start",
                        isOn: Binding(get: { c.model.settings.playTone }, set: { c.setPlayTone($0) }))
             }
+            Section {
+                LabeledContent("Background opacity") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "circle.dotted").foregroundStyle(.secondary).help("See-through")
+                        Slider(value: Binding(get: { c.model.settings.backgroundOpacity },
+                                              set: { c.setBackgroundOpacity($0) }), in: 0...1)
+                            .frame(minWidth: 140)
+                        Image(systemName: "circle.fill").foregroundStyle(.secondary).help("Solid")
+                        Text("\(Int((c.model.settings.backgroundOpacity * 100).rounded())) %")
+                            .monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
+                    }
+                }
+            } footer: {
+                Text("Raise this if text is hard to read on bright wallpapers or windows behind the panel.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .onAppear { c.syncLaunchAtLogin() }

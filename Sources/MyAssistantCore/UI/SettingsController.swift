@@ -72,6 +72,11 @@ public final class SettingsController {
         changed()
     }
 
+    public func setBackgroundOpacity(_ value: Double) {
+        model.settings.backgroundOpacity = min(1, max(0, value))
+        changed()
+    }
+
     public func setLaunchAtLogin(_ on: Bool) {
         launchError = nil
         do {

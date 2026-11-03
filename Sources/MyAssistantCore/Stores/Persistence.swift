@@ -6,6 +6,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var launchAtLogin = false
     public var reserveScreenSpace = true
     public var playTone = true
+    /// 0 = fully see-through glass, 1 = nearly solid panel (for bright backgrounds).
+    public var backgroundOpacity: Double = 0
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -14,6 +16,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         reserveScreenSpace = try c.decodeIfPresent(Bool.self, forKey: .reserveScreenSpace) ?? true
         playTone = try c.decodeIfPresent(Bool.self, forKey: .playTone) ?? true
+        backgroundOpacity = try c.decodeIfPresent(Double.self, forKey: .backgroundOpacity) ?? 0
     }
 }
 

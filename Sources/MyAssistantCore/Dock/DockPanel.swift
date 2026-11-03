@@ -15,7 +15,8 @@ public final class DockPanel: NSPanel {
         hidesOnDeactivate = false
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // The glass draws its own edge; a window shadow turns into a thick dark border when the panel is key.
+        hasShadow = false
     }
 }
 
