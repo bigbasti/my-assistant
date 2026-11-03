@@ -22,33 +22,56 @@ private struct SourcesTab: View {
 
     var body: some View {
         Form {
-            Section("Sources") {
-                ForEach(SourceKind.allCases, id: \.self) { kind in
+            ForEach(SourceKind.allCases, id: \.self) { kind in
+                Section {
                     Toggle(isOn: Binding(get: { c.model.settings.enabled.contains(kind) },
                                          set: { c.setSource(kind, enabled: $0) })) {
                         HStack {
                             Circle().fill(kind.color).frame(width: 10, height: 10)
-                            Text(kind.rawValue.capitalized)
-                            Spacer()
-                            Text(statusText(c.model.status[kind])).foregroundStyle(.secondary).font(.callout)
+                            Text(title(kind))
                         }
                     }
+                    let st = c.model.status[kind] ?? .disabled
+                    let (text, color) = describe(st)
+                    HStack(spacing: 6) {
+                        if case .ok = st { Circle().fill(.green).frame(width: 8, height: 8) }
+                        Text(text).foregroundStyle(color).font(.callout)
+                    }
+                    if st == .needsFullDiskAccess {
+                        Button("Open Full Disk Access settings…") { c.openFullDiskAccessSettings() }
+                    }
+                    if st == .needsCalendarAccess {
+                        Button("Grant Calendar access…") { Task { await c.fixCalendarAccess() } }
+                    }
                 }
-                Button("Refresh now") { c.refresh() }
+            }
+            Section {
+                Text("Turn on notifications for Outlook and Teams in System Settings → Notifications (banners may be set to None; alerts still arrive).")
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
     }
 
-    private func statusText(_ s: SourceStatus?) -> String {
+    private func title(_ k: SourceKind) -> String {
+        switch k {
+        case .teams: "Teams"
+        case .mail: "Outlook mail"
+        case .calendar: "Calendar"
+        }
+    }
+
+    private func describe(_ s: SourceStatus) -> (String, Color) {
         switch s {
-        case nil: "—"
-        case .disabled: "Disabled"
-        case .noAlertsYet: "No alerts yet"
-        case .needsFullDiskAccess: "Full Disk Access needed"
-        case .needsCalendarAccess: "Calendar access needed"
-        case .ok(let d): "Updated \(d.formatted(date: .omitted, time: .standard))"
-        case .error(let m): "Error: \(m)"
+        case .disabled: return ("Off", Color.secondary)
+        case .noAlertsYet: return ("No alerts seen yet", Color.secondary)
+        case .needsFullDiskAccess: return ("Full Disk Access needed", Color.orange)
+        case .needsCalendarAccess: return ("Calendar access needed", Color.orange)
+        case .ok(let d):
+            let f = RelativeDateTimeFormatter()
+            f.unitsStyle = .abbreviated
+            return ("Working · updated \(f.localizedString(for: d, relativeTo: Date()))", Color.primary)
+        case .error(let m): return (m, Color.red)
         }
     }
 }

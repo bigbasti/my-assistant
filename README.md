@@ -1,6 +1,6 @@
 # My Assistant
 
-A docked, always-on-top macOS panel showing Teams chats, Outlook mail and today's calendar from Microsoft Graph.
+A docked, always-on-top macOS panel showing Teams chats, Outlook mail and today's meetings. Everything is read locally on your Mac; there is no sign-in and no cloud access.
 
 ## Build and run
 
@@ -15,15 +15,14 @@ Copy the app to `/Applications` before enabling **Launch at login**; registering
 
 (`swift test` runs nothing with Command Line Tools only.)
 
-## Entra app setup
+## Setup
 
-Register an app in Microsoft Entra ID:
+1. **Full Disk Access** (Teams and Outlook alerts): System Settings → Privacy & Security → Full Disk Access, add `My Assistant.app`. Settings → Sources has a button that opens this pane.
+2. **Calendar access** (meetings): allow the prompt, or enable it in Privacy & Security → Calendars. Settings → Sources has a button for this too.
+3. **Notifications**: turn on notifications for Teams and Outlook in System Settings → Notifications. Banners may be set to None; alerts still arrive.
+4. **Exchange account**: add your work account in System Settings → Internet Accounts with Calendars enabled, so meetings appear in Calendar.
 
-- Platform: public client (mobile/desktop), redirect URI `myassistant://auth`
-- Delegated permissions: `Mail.Read Calendars.Read Chat.Read offline_access User.Read`
-- Enter the Client ID and Tenant ID in Settings → Accounts, then Sign in.
-
-`Chat.Read` may need admin consent in corporate tenants; the Teams source then shows "consent required" while the others keep working.
+Teams and Outlook alerts are read from the macOS notification database; meetings are read through EventKit.
 
 ## Accessibility
 
@@ -31,4 +30,4 @@ Register an app in Microsoft Entra ID:
 
 ## Rebuild note
 
-Ad-hoc signed rebuilds change the app's code identity, which resets the Accessibility and Keychain permissions. Grant them again after every rebuild.
+Ad-hoc signed rebuilds change the app's code identity, which resets the Accessibility, Full Disk Access and Calendar permissions. Grant them again after every rebuild.

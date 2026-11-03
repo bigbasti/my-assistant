@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import EventKit
 @testable import MyAssistantCore
 
 final class FakeLoginItem: LoginItem {
@@ -15,6 +16,7 @@ final class FakeLoginItem: LoginItem {
     var restarts = 0
     var edges: [DockEdge] = []
     var reserving: [Bool] = []
+    var opened: [URL] = []
 }
 
 @MainActor @Suite struct SettingsTests {
@@ -40,12 +42,14 @@ final class FakeLoginItem: LoginItem {
 
     struct LoginError: Error {}
 
-    func make(login: FakeLoginItem = FakeLoginItem()) -> (SettingsController, Effects, AppModel) {
+    func make(login: FakeLoginItem = FakeLoginItem(), auth: EKAuthorizationStatus = .denied,
+              opener: (@MainActor (URL) -> Void)? = nil) -> (SettingsController, Effects, AppModel) {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("set-\(UUID()).json")
         let m = AppModel(persistence: Persistence(url: url))
         let e = Effects()
         let c = SettingsController(model: m, restartSources: { e.restarts += 1 }, dockTo: { e.edges.append($0) },
-                                   setReserving: { e.reserving.append($0) }, loginItem: login)
+                                   setReserving: { e.reserving.append($0) }, loginItem: login,
+                                   openURL: opener ?? { e.opened.append($0) }, calendarAuthorization: { auth })
         return (c, e, m)
     }
 
@@ -92,5 +96,39 @@ final class FakeLoginItem: LoginItem {
         let (c, _, m) = make(login: login)
         c.syncLaunchAtLogin()
         #expect(m.settings.launchAtLogin)
+    }
+
+    @Test func fullDiskAccessButtonOpensPrivacyAllFiles() {
+        let (c, e, _) = make()
+        c.openFullDiskAccessSettings()
+        #expect(e.opened.map(\.absoluteString) == ["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+    }
+
+    @Test func calendarFixOpensSettingsWhenDenied() async {
+        let (c, e, _) = make(auth: .denied)
+        await c.fixCalendarAccess()
+        #expect(e.opened.map(\.absoluteString) == ["x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"])
+        #expect(e.restarts == 0)
+    }
+
+    @Test func calendarFixRequestsWhenNotDetermined() async {
+        let (c, e, _) = make(auth: .notDetermined)
+        await c.fixCalendarAccess()
+        #expect(e.restarts == 1)
+        #expect(e.opened.isEmpty)
+    }
+
+    @Test func toggleRestartsSources() {
+        let (c, e, _) = make()
+        c.setSource(.teams, enabled: false)
+        #expect(e.restarts == 1)
+    }
+
+    @Test func disablingCalendarClearsEvents() {
+        let (c, _, m) = make()
+        m.events.replace([CalendarEvent(id: "e", subject: "t", start: Date().addingTimeInterval(600), end: Date().addingTimeInterval(1200))])
+        #expect(!m.events.today.isEmpty)
+        c.setSource(.calendar, enabled: false)
+        #expect(m.events.today.isEmpty)
     }
 }
