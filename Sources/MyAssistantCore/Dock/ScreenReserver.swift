@@ -64,6 +64,30 @@ public final class ScreenReserver {
         return !(a.target == target && a.resulting == current)
     }
 
+    public enum WindowHandling: Equatable, Sendable { case fit, moveOnly, ignore }
+
+    /// Standard windows are resized to fit beside the panel; dialogs and floating windows of
+    /// regular apps (e.g. Outlook reminders) are only moved. Menu-bar apps' extras are left alone.
+    public nonisolated static func handling(subrole: String?, regularApp: Bool) -> WindowHandling {
+        switch subrole {
+        case "AXStandardWindow": .fit
+        case "AXDialog", "AXFloatingWindow": regularApp ? .moveOnly : .ignore
+        default: .ignore
+        }
+    }
+
+    /// Pure: shifts the window horizontally out of the strip keeping its size, or nil if no change.
+    public nonisolated static func moveAside(_ window: CGRect, avoiding strip: CGRect, in visible: CGRect) -> CGRect? {
+        guard window.intersects(strip), strip.width > 0 else { return nil }
+        var r = window
+        if strip.midX < visible.midX {
+            r.origin.x = min(strip.maxX, visible.maxX - window.width)
+        } else {
+            r.origin.x = max(visible.minX, strip.minX - window.width)
+        }
+        return r == window ? nil : r
+    }
+
     /// Pure: returns the new frame (Cocoa coords) or nil when no change is needed.
     public nonisolated static func clamp(_ window: CGRect, avoiding strip: CGRect, in visible: CGRect) -> CGRect? {
         guard window.intersects(strip), strip.width > 0 else { return nil }
@@ -108,11 +132,23 @@ public final class ScreenReserver {
                 if let self, let app { self.remove(pid: app.processIdentifier) }
             }
         })
+        tokens.append(nc.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated {
+                guard let self, let app else { return }
+                self.observe(app)
+                self.enforce(pid: app.processIdentifier)
+            }
+        })
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular { observe(app) }
+        startSweep()
     }
 
     private func stop() {
         stopTrustWatch()
+        sweepTimer?.invalidate(); sweepTimer = nil
+        releaseTimer?.invalidate(); releaseTimer = nil
+        pendingRelease.removeAll()
         let nc = NSWorkspace.shared.notificationCenter
         tokens.forEach { nc.removeObserver($0) }
         tokens.removeAll()
@@ -187,7 +223,39 @@ public final class ScreenReserver {
                 entries[pid] = e
             }
         default:
-            enforce(pid: pid)
+            // While the user is still dragging or resizing, wait for the mouse to be released;
+            // otherwise the window jumps around under the cursor.
+            if NSEvent.pressedMouseButtons & 1 != 0 { enforceAfterRelease(pid: pid) } else { enforce(pid: pid) }
+        }
+    }
+
+    private var pendingRelease: Set<pid_t> = []
+    private var releaseTimer: Timer?
+
+    private func enforceAfterRelease(pid: pid_t) {
+        pendingRelease.insert(pid)
+        guard releaseTimer == nil else { return }
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
+                self.releaseTimer?.invalidate(); self.releaseTimer = nil
+                let pids = self.pendingRelease; self.pendingRelease.removeAll()
+                pids.forEach { self.enforce(pid: $0) }
+            }
+        }
+    }
+
+    private var sweepTimer: Timer?
+
+    /// Safety net for apps (e.g. Electron-based Teams/Outlook) that don't reliably post AX window events.
+    private func startSweep() {
+        guard sweepTimer == nil else { return }
+        sweepTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, NSEvent.pressedMouseButtons & 1 == 0 else { return }
+                self.enforceAll()
+            }
         }
     }
 
@@ -210,17 +278,23 @@ public final class ScreenReserver {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appEl, kAXWindowsAttribute as CFString, &ref) == .success,
               let windows = ref as? [AXUIElement] else { return }
+        let regular = NSRunningApplication(processIdentifier: pid)?.activationPolicy == .regular
         for win in windows {
-            guard string(win, kAXSubroleAttribute) == kAXStandardWindowSubrole,
+            let mode = Self.handling(subrole: string(win, kAXSubroleAttribute), regularApp: regular)
+            guard mode != .ignore,
                   bool(win, "AXFullScreen") != true,
+                  bool(win, "AXMinimized") != true,
                   let ax = frame(win) else { continue }
             let cocoa = CGRect(x: ax.minX, y: primaryH - ax.maxY, width: ax.width, height: ax.height)
-            guard let new = Self.clamp(cocoa, avoiding: strip, in: screen.visibleFrame) else { continue }
+            let target = mode == .fit
+                ? Self.clamp(cocoa, avoiding: strip, in: screen.visibleFrame)
+                : Self.moveAside(cocoa, avoiding: strip, in: screen.visibleFrame)
+            guard let new = target else { continue }
             let key = Int(CFHash(win))
             guard Self.shouldApply(target: new, current: cocoa, lastAttempt: attempts[key]) else { continue }
             var pos = CGPoint(x: new.minX, y: primaryH - new.maxY)
             var size = new.size
-            if let v = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v) }
+            if mode == .fit, let v = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v) }
             if let v = AXValueCreate(.cgPoint, &pos) { AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v) }
             let after = frame(win).map { CGRect(x: $0.minX, y: primaryH - $0.maxY, width: $0.width, height: $0.height) } ?? cocoa
             attempts[key] = Attempt(target: new, resulting: after)

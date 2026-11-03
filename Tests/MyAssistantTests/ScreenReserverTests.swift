@@ -31,4 +31,31 @@ extension ScreenReserverTests {
         #expect(ScreenReserver.shouldApply(target: target, current: CGRect(x: 0, y: 0, width: 1440, height: 875), lastAttempt: attempt))
         #expect(ScreenReserver.shouldApply(target: target, current: stuck, lastAttempt: nil))
     }
+
+    @Test func windowHandlingBySubrole() {
+        #expect(ScreenReserver.handling(subrole: "AXStandardWindow", regularApp: true) == .fit)
+        #expect(ScreenReserver.handling(subrole: "AXDialog", regularApp: true) == .moveOnly)
+        #expect(ScreenReserver.handling(subrole: "AXFloatingWindow", regularApp: true) == .moveOnly)
+        #expect(ScreenReserver.handling(subrole: "AXSystemDialog", regularApp: true) == .ignore)
+        #expect(ScreenReserver.handling(subrole: nil, regularApp: true) == .ignore)
+        #expect(ScreenReserver.handling(subrole: "AXStandardWindow", regularApp: false) == .fit)
+        #expect(ScreenReserver.handling(subrole: "AXFloatingWindow", regularApp: false) == .ignore)
+    }
+
+    @Test func moveOnlyShiftsDialogBesideLeftDockKeepingSize() {
+        let strip = DockGeometry.frame(for: .left, in: visible)
+        let dialog = CGRect(x: 100, y: 300, width: 400, height: 200)
+        #expect(ScreenReserver.moveAside(dialog, avoiding: strip, in: visible) == CGRect(x: 360, y: 300, width: 400, height: 200))
+    }
+
+    @Test func moveOnlyShiftsDialogBesideRightDock() {
+        let strip = DockGeometry.frame(for: .right, in: visible)
+        let dialog = CGRect(x: 1000, y: 300, width: 400, height: 200)
+        #expect(ScreenReserver.moveAside(dialog, avoiding: strip, in: visible) == CGRect(x: 680, y: 300, width: 400, height: 200))
+    }
+
+    @Test func moveOnlyLeavesNonOverlappingDialog() {
+        let strip = DockGeometry.frame(for: .left, in: visible)
+        #expect(ScreenReserver.moveAside(CGRect(x: 500, y: 0, width: 300, height: 200), avoiding: strip, in: visible) == nil)
+    }
 }

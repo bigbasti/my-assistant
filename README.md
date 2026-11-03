@@ -30,4 +30,4 @@ Teams and Outlook alerts are read from the macOS notification database; meetings
 
 ## Rebuild note
 
-Ad-hoc signed rebuilds change the app's code identity, which resets the Accessibility, Full Disk Access and Calendar permissions. Grant them again after every rebuild.
+`scripts/bundle.sh` signs the app with your first "Apple Development" certificate, so macOS keeps the Accessibility, Full Disk Access, Calendar and Mail automation permissions across rebuilds. Without such a certificate (or with `SIGN_IDENTITY=-`) the app is signed ad hoc; every rebuild then changes its code identity and those permissions must be granted again.
