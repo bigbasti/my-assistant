@@ -27,7 +27,7 @@ public final class DockController {
 
     private let panel: DockPanel
     private let previewWindow: NSWindow
-    private var dragging = false
+    private var dragTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
 
     public init<Content: View>(content: Content, placement: DockPlacement? = nil) {
@@ -71,23 +71,28 @@ public final class DockController {
 
     /// Called by the drag grip on mouse-down; follows the mouse until mouse-up.
     public func beginDrag() {
-        guard !dragging else { return }
-        dragging = true
+        guard dragTask == nil else { return }
         let grab = NSEvent.mouseLocation
         let startOrigin = panel.frame.origin
         previewWindow.orderFront(nil)
-        Task { @MainActor in
-            while dragging {
+        dragTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled, NSEvent.pressedMouseButtons & 1 != 0 {
                 let m = NSEvent.mouseLocation
-                panel.setFrameOrigin(NSPoint(x: startOrigin.x + m.x - grab.x, y: startOrigin.y + m.y - grab.y))
-                previewWindow.setFrame(DockGeometry.frame(for: nearest(m).edge, in: visible(of: nearest(m).screenID)), display: true)
-                if NSEvent.pressedMouseButtons & 1 == 0 { dragging = false }
+                let n = self.nearest(m)
+                self.panel.setFrameOrigin(NSPoint(x: startOrigin.x + m.x - grab.x, y: startOrigin.y + m.y - grab.y))
+                self.previewWindow.setFrame(DockGeometry.frame(for: n.edge, in: self.visible(of: n.screenID)), display: true)
                 try? await Task.sleep(for: .milliseconds(16))
             }
-            let target = nearest(NSEvent.mouseLocation)
-            previewWindow.orderOut(nil)
-            dock(to: target, animated: true)
+            guard let self else { return }
+            self.dragTask = nil
+            self.previewWindow.orderOut(nil)
+            guard !Task.isCancelled else { return }
+            self.dock(to: self.nearest(NSEvent.mouseLocation), animated: true)
         }
+    }
+
+    public func cancelDrag() {
+        dragTask?.cancel()
     }
 
     private func nearest(_ point: CGPoint) -> DockPlacement {
@@ -123,7 +128,7 @@ public final class DockController {
     static var screens: [(id: CGDirectDisplayID, visibleFrame: CGRect)] {
         NSScreen.screens.map { ($0.displayID, $0.visibleFrame) }
     }
-    static var mainScreenID: CGDirectDisplayID { (NSScreen.main ?? NSScreen.screens.first)?.displayID ?? 0 }
+    static var mainScreenID: CGDirectDisplayID { NSScreen.screens.first?.displayID ?? 0 }
 }
 
 extension NSScreen {

@@ -21,3 +21,14 @@ import CoreGraphics
         #expect(r == CGRect(x: 0, y: 0, width: 1080, height: 875))
     }
 }
+
+extension ScreenReserverTests {
+    @Test func refusingWindowIsNotRetried() {
+        let target = CGRect(x: 360, y: 0, width: 1080, height: 875)
+        let stuck = CGRect(x: 360, y: 0, width: 1200, height: 875)
+        let attempt = ScreenReserver.Attempt(target: target, resulting: stuck)
+        #expect(!ScreenReserver.shouldApply(target: target, current: stuck, lastAttempt: attempt))
+        #expect(ScreenReserver.shouldApply(target: target, current: CGRect(x: 0, y: 0, width: 1440, height: 875), lastAttempt: attempt))
+        #expect(ScreenReserver.shouldApply(target: target, current: stuck, lastAttempt: nil))
+    }
+}

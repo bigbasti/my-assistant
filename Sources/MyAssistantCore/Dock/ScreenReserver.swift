@@ -4,11 +4,31 @@ import ApplicationServices
 @MainActor
 public final class ScreenReserver {
     private var strip: CGRect?
-    private var observers: [pid_t: AXObserver] = [:]
-    private var workspaceToken: NSObjectProtocol?
+    private struct Entry {
+        var observer: AXObserver
+        var app: AXUIElement
+        var windows: [Int: AXUIElement] = [:]
+    }
+    private var entries: [pid_t: Entry] = [:]
+    private var attempts: [Int: Attempt] = [:]
+    private var tokens: [NSObjectProtocol] = []
     private var prompted = false
+    private var isEnforcing = false
+
+    public struct Attempt: Equatable {
+        public var target: CGRect
+        public var resulting: CGRect
+        public init(target: CGRect, resulting: CGRect) { self.target = target; self.resulting = resulting }
+    }
 
     public init() {}
+
+    /// Pure: false when the previous attempt aimed at the same target and the window ended up
+    /// exactly where it is now (it refuses to move/resize), so retrying would loop forever.
+    public nonisolated static func shouldApply(target: CGRect, current: CGRect, lastAttempt: Attempt?) -> Bool {
+        guard let a = lastAttempt else { return true }
+        return !(a.target == target && a.resulting == current)
+    }
 
     /// Pure: returns the new frame (Cocoa coords) or nil when no change is needed.
     public nonisolated static func clamp(_ window: CGRect, avoiding strip: CGRect, in visible: CGRect) -> CGRect? {
@@ -37,57 +57,115 @@ public final class ScreenReserver {
     }
 
     private func start() {
-        guard workspaceToken == nil else { return }
-        workspaceToken = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] note in
+        guard tokens.isEmpty else { return }
+        let nc = NSWorkspace.shared.notificationCenter
+        tokens.append(nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             MainActor.assumeIsolated {
                 guard let self, let app else { return }
                 self.observe(app)
                 self.enforce(pid: app.processIdentifier)
             }
-        }
+        })
+        tokens.append(nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated {
+                if let self, let app { self.remove(pid: app.processIdentifier) }
+            }
+        })
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular { observe(app) }
     }
 
     private func stop() {
-        if let t = workspaceToken { NSWorkspace.shared.notificationCenter.removeObserver(t) }
-        workspaceToken = nil
-        for (_, o) in observers {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode)
-        }
-        observers.removeAll()
+        let nc = NSWorkspace.shared.notificationCenter
+        tokens.forEach { nc.removeObserver($0) }
+        tokens.removeAll()
+        for pid in Array(entries.keys) { remove(pid: pid) }
+        attempts.removeAll()
     }
+
+    private func remove(pid: pid_t) {
+        guard let e = entries.removeValue(forKey: pid) else { return }
+        AXObserverRemoveNotification(e.observer, e.app, kAXWindowCreatedNotification as CFString)
+        for (key, w) in e.windows {
+            for n in Self.windowNotifications { AXObserverRemoveNotification(e.observer, w, n as CFString) }
+            attempts[key] = nil
+        }
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(e.observer), .defaultMode)
+    }
+
+    private static let windowNotifications = [
+        kAXWindowMovedNotification, kAXWindowResizedNotification, kAXUIElementDestroyedNotification,
+    ]
 
     private func observe(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard pid != getpid(), observers[pid] == nil else { return }
-        var obs: AXObserver?
-        let cb: AXObserverCallback = { _, element, _, refcon in
-            guard let refcon else { return }
-            let me = Unmanaged<ScreenReserver>.fromOpaque(refcon).takeUnretainedValue()
-            var pid: pid_t = 0
-            AXUIElementGetPid(element, &pid)
-            MainActor.assumeIsolated { me.enforce(pid: pid) }
+        guard pid != getpid() else { return }
+        if entries[pid] == nil {
+            var obs: AXObserver?
+            let cb: AXObserverCallback = { _, element, notification, refcon in
+                guard let refcon else { return }
+                let me = Unmanaged<ScreenReserver>.fromOpaque(refcon).takeUnretainedValue()
+                var pid: pid_t = 0
+                AXUIElementGetPid(element, &pid)
+                let name = notification as String
+                MainActor.assumeIsolated { me.handle(name, element: element, pid: pid) }
+            }
+            guard AXObserverCreate(pid, cb, &obs) == .success, let obs else { return }
+            let appEl = AXUIElementCreateApplication(pid)
+            AXObserverAddNotification(obs, appEl, kAXWindowCreatedNotification as CFString, Unmanaged.passUnretained(self).toOpaque())
+            CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
+            entries[pid] = Entry(observer: obs, app: appEl)
         }
-        guard AXObserverCreate(pid, cb, &obs) == .success, let obs else { return }
-        let appEl = AXUIElementCreateApplication(pid)
+        registerWindows(pid: pid)
+    }
+
+    private func registerWindows(pid: pid_t) {
+        guard let e = entries[pid] else { return }
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(e.app, kAXWindowsAttribute as CFString, &ref) == .success,
+              let windows = ref as? [AXUIElement] else { return }
+        windows.forEach { register(window: $0, pid: pid) }
+    }
+
+    private func register(window: AXUIElement, pid: pid_t) {
+        guard var e = entries[pid] else { return }
+        let key = Int(CFHash(window))
+        guard e.windows[key] == nil else { return }
         let me = Unmanaged.passUnretained(self).toOpaque()
-        for n in [kAXWindowMovedNotification, kAXWindowResizedNotification, kAXWindowCreatedNotification] {
-            AXObserverAddNotification(obs, appEl, n as CFString, me)
+        for n in Self.windowNotifications { AXObserverAddNotification(e.observer, window, n as CFString, me) }
+        e.windows[key] = window
+        entries[pid] = e
+    }
+
+    private func handle(_ name: String, element: AXUIElement, pid: pid_t) {
+        switch name {
+        case kAXWindowCreatedNotification:
+            register(window: element, pid: pid)
+            enforce(pid: pid)
+        case kAXUIElementDestroyedNotification:
+            let key = Int(CFHash(element))
+            attempts[key] = nil
+            if var e = entries[pid], let w = e.windows.removeValue(forKey: key) {
+                for n in Self.windowNotifications { AXObserverRemoveNotification(e.observer, w, n as CFString) }
+                entries[pid] = e
+            }
+        default:
+            enforce(pid: pid)
         }
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
-        observers[pid] = obs
     }
 
     private func enforceAll() {
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
+            observe(app)
             enforce(pid: app.processIdentifier)
         }
     }
 
     private func enforce(pid: pid_t) {
+        guard !isEnforcing else { return }
+        isEnforcing = true
+        defer { isEnforcing = false }
         guard let strip, pid != getpid(),
               let primaryH = NSScreen.screens.first?.frame.height,
               let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(strip) || $0.frame.intersects(strip) })
@@ -102,10 +180,14 @@ public final class ScreenReserver {
                   let ax = frame(win) else { continue }
             let cocoa = CGRect(x: ax.minX, y: primaryH - ax.maxY, width: ax.width, height: ax.height)
             guard let new = Self.clamp(cocoa, avoiding: strip, in: screen.visibleFrame) else { continue }
+            let key = Int(CFHash(win))
+            guard Self.shouldApply(target: new, current: cocoa, lastAttempt: attempts[key]) else { continue }
             var pos = CGPoint(x: new.minX, y: primaryH - new.maxY)
             var size = new.size
             if let v = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v) }
             if let v = AXValueCreate(.cgPoint, &pos) { AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v) }
+            let after = frame(win).map { CGRect(x: $0.minX, y: primaryH - $0.maxY, width: $0.width, height: $0.height) } ?? cocoa
+            attempts[key] = Attempt(target: new, resulting: after)
         }
     }
 
