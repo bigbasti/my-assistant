@@ -6,7 +6,6 @@ public final class NotificationWatcher {
     private let read: @Sendable ([String]) throws(NotificationDBError) -> [AlertRecord]
     private let now: () -> Date
     private let dbPath: String
-    private var seen: Set<SourceKind> = []
     private var sources: [String: DispatchSourceFileSystemObject] = [:]
     private var debounce: DispatchWorkItem?
     private var timer: DispatchSourceTimer?
@@ -84,18 +83,20 @@ public final class NotificationWatcher {
         guard !enabled.isEmpty else { return }
         let date = now()
         do {
-            var records = try read(enabled.map(\.1))
-            if !model.state.alertsBootstrapped {
-                records = records.filter { AlertMapper.isFresh($0, now: date) }
+            let records = try read(enabled.map(\.1))
+            let firstRead = Set(enabled.map(\.0)).subtracting(model.state.bootstrappedSources)
+            let mapped = records.compactMap(AlertMapper.map).filter { n in
+                guard firstRead.contains(n.kind) else { return true }
+                return date.timeIntervalSince(n.surfacedAt) <= 24 * 3600
             }
-            let mapped = records.compactMap(AlertMapper.map)
             model.notifications.ingest(mapped)
-            for n in mapped { seen.insert(n.kind) }
-            if !model.state.alertsBootstrapped {
-                model.state.alertsBootstrapped = true
+            let newlySeen = Set(mapped.map(\.kind)).subtracting(model.state.sourcesSeen)
+            if !firstRead.isEmpty || !newlySeen.isEmpty {
+                model.state.bootstrappedSources.formUnion(firstRead)
+                model.state.sourcesSeen.formUnion(newlySeen)
                 model.save()
             }
-            for (kind, _) in enabled { model.status[kind] = seen.contains(kind) ? .ok(date) : .noAlertsYet }
+            for (kind, _) in enabled { model.status[kind] = model.state.sourcesSeen.contains(kind) ? .ok(date) : .noAlertsYet }
         } catch {
             switch error {
             case .busy: break

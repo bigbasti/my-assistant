@@ -18,6 +18,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
 }
 
 public struct PersistedState: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case notifications, handledIDs, handledOrder, dismissedEventIDs, dock, settings
+        case bootstrappedSources, sourcesSeen, alertsBootstrapped
+    }
+
     public var notifications: [AssistantNotification] = []
     public var handledIDs: Set<String> = []
     /// Insertion order of `handledIDs`, used to trim the oldest when capped.
@@ -25,8 +30,21 @@ public struct PersistedState: Codable, Equatable, Sendable {
     public var dismissedEventIDs: Set<String> = []
     public var dock: DockPlacement?
     public var settings = AppSettings()
-    public var alertsBootstrapped = false
+    public var bootstrappedSources: Set<SourceKind> = []
+    public var sourcesSeen: Set<SourceKind> = []
     public init() {}
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(notifications, forKey: .notifications)
+        try c.encode(handledIDs, forKey: .handledIDs)
+        try c.encode(handledOrder, forKey: .handledOrder)
+        try c.encode(dismissedEventIDs, forKey: .dismissedEventIDs)
+        try c.encodeIfPresent(dock, forKey: .dock)
+        try c.encode(settings, forKey: .settings)
+        try c.encode(bootstrappedSources, forKey: .bootstrappedSources)
+        try c.encode(sourcesSeen, forKey: .sourcesSeen)
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -36,7 +54,12 @@ public struct PersistedState: Codable, Equatable, Sendable {
         dismissedEventIDs = try c.decodeIfPresent(Set<String>.self, forKey: .dismissedEventIDs) ?? []
         dock = try c.decodeIfPresent(DockPlacement.self, forKey: .dock)
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
-        alertsBootstrapped = try c.decodeIfPresent(Bool.self, forKey: .alertsBootstrapped) ?? false
+        if let set = try c.decodeIfPresent(Set<SourceKind>.self, forKey: .bootstrappedSources) {
+            bootstrappedSources = set
+        } else if try c.decodeIfPresent(Bool.self, forKey: .alertsBootstrapped) == true {
+            bootstrappedSources = [.teams, .mail]
+        }
+        sourcesSeen = try c.decodeIfPresent(Set<SourceKind>.self, forKey: .sourcesSeen) ?? []
     }
 }
 

@@ -10,6 +10,8 @@ public final class AppModel {
     public let events: EventStore
     public var status: [SourceKind: SourceStatus] = [:]
     @ObservationIgnored public var playTone: @MainActor () -> Void = { AppModel.playChime() }
+    @ObservationIgnored public var opener: @MainActor (URL?) -> Void = { Opener.open($0) }
+    @ObservationIgnored public var launchApp: @MainActor (String) -> Void = { AppModel.launch(bundleID: $0) }
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private let clock: () -> Date
     /// Bumped every tick so views depending on time re-evaluate.
@@ -40,7 +42,21 @@ public final class AppModel {
         return s
     }
 
-    public func open(_ url: URL?) { Opener.open(url) }
+    public func open(_ url: URL?) { opener(url) }
+
+    public func open(_ n: AssistantNotification) {
+        if let url = n.openURL { opener(url); return }
+        switch n.kind {
+        case .mail: launchApp("com.microsoft.Outlook")
+        case .teams: launchApp("com.microsoft.teams2")
+        case .calendar: break
+        }
+    }
+
+    static func launch(bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
 
     public func tick() {
         notifications.tick()

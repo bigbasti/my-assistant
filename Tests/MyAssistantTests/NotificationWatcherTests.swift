@@ -34,7 +34,7 @@ import Foundation
         #expect(Set(m.notifications.visible.map(\.id)) == ["teams:a", "mail:b"])
         #expect(m.status[.teams] == .ok(t0))
         #expect(m.status[.mail] == .ok(t0))
-        #expect(m.state.alertsBootstrapped)
+        #expect(m.state.bootstrappedSources == [.teams, .mail])
     }
 
     @Test func bootstrapOnlyIngestsFresh() {

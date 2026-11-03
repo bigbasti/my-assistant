@@ -34,7 +34,7 @@ public struct RootView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(items) { n in
-                            NotificationCard(item: n, onOpen: { model.open(n.openURL) },
+                            NotificationCard(item: n, onOpen: { model.open(n) },
                                              onDone: { withAnimation { model.notifications.markDone(n.id) } },
                                              onSnooze: { o in withAnimation { model.notifications.snooze(n.id, o) } })
                             .transition(.move(edge: .top).combined(with: .opacity))

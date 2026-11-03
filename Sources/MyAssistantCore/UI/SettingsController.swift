@@ -34,6 +34,7 @@ public final class SettingsController {
 
     public func setSource(_ kind: SourceKind, enabled: Bool) {
         if enabled { model.settings.enabled.insert(kind) } else { model.settings.enabled.remove(kind) }
+        if !enabled { model.state.bootstrappedSources.remove(kind) }
         if !enabled && kind == .calendar { model.events.replace([]) }
         changed()
         restartSources()
@@ -90,6 +91,4 @@ public final class SettingsController {
             changed()
         }
     }
-
-    public func refresh() { restartSources() }
 }
