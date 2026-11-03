@@ -6,12 +6,19 @@ public final class CalendarReader {
     private let model: AppModel
     private let store: EKEventStore
     private let now: () -> Date
+    private let calendar: Calendar
+    private var generation = 0
+    private var inFlight = false
+    private var pending = false
+    private var kickTask: Task<Void, Never>?
+    private var zoneObservers: [NSObjectProtocol] = []
     private var observer: NSObjectProtocol?
     private var debounce: DispatchWorkItem?
     private var timer: DispatchSourceTimer?
     private var midnight: DispatchWorkItem?
 
-    public init(model: AppModel, store: EKEventStore = .init(), now: @escaping () -> Date = Date.init) {
+    public init(model: AppModel, store: EKEventStore = .init(), now: @escaping () -> Date = Date.init, calendar: Calendar = .current) {
+        self.calendar = calendar
         self.model = model
         self.store = store
         self.now = now
@@ -21,6 +28,11 @@ public final class CalendarReader {
         stop()
         observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRefresh() }
+        }
+        for name in [Notification.Name.NSSystemTimeZoneDidChange, .NSSystemClockDidChange] {
+            zoneObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.armMidnight(); self?.kick() }
+            })
         }
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 60, repeating: 60)
@@ -36,6 +48,11 @@ public final class CalendarReader {
     public func stop() {
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
+        for o in zoneObservers { NotificationCenter.default.removeObserver(o) }
+        zoneObservers = []
+        generation += 1
+        kickTask?.cancel(); kickTask = nil
+        pending = false
         debounce?.cancel(); debounce = nil
         timer?.cancel(); timer = nil
         midnight?.cancel(); midnight = nil
@@ -53,7 +70,7 @@ public final class CalendarReader {
     private func armMidnight() {
         midnight?.cancel()
         let date = now()
-        let next = CalendarMapping.dayRange(now: date, calendar: .current).end
+        let next = CalendarMapping.dayRange(now: date, calendar: calendar).end
         let item = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -66,10 +83,27 @@ public final class CalendarReader {
     }
 
     public func refresh() async {
+        if inFlight { pending = true; return }
+        inFlight = true
+        defer { inFlight = false }
+        repeat {
+            pending = false
+            await refreshOnce()
+        } while pending
+    }
+
+    private func refreshOnce() async {
+        let gen = generation
         switch EKEventStore.authorizationStatus(for: .event) {
         case .notDetermined:
-            let granted = (try? await store.requestFullAccessToEvents()) ?? false
-            if granted { read() } else { model.status[.calendar] = .needsCalendarAccess }
+            do {
+                let granted = try await store.requestFullAccessToEvents()
+                guard gen == generation else { return }
+                if granted { read() } else { model.status[.calendar] = .needsCalendarAccess }
+            } catch {
+                guard gen == generation else { return }
+                model.status[.calendar] = .error("Calendar access request failed")
+            }
         case .fullAccess:
             read()
         default:
@@ -79,7 +113,7 @@ public final class CalendarReader {
 
     private func read() {
         let date = now()
-        let range = CalendarMapping.dayRange(now: date, calendar: .current)
+        let range = CalendarMapping.dayRange(now: date, calendar: calendar)
         let predicate = store.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
         let mapped = store.events(matching: predicate).compactMap { CalendarMapping.map(Self.snapshot($0)) }
             .sorted { $0.start < $1.start }
@@ -112,5 +146,7 @@ public final class CalendarReader {
 }
 
 extension CalendarReader {
-    fileprivate func kick() { Task { await refresh() } }
+    fileprivate func kick() {
+        kickTask = Task { [weak self] in await self?.refresh() }
+    }
 }

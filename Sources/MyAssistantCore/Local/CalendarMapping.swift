@@ -40,14 +40,42 @@ public enum CalendarMapping {
         }
     }
 
+    private static func resolve(_ url: URL) -> URL? {
+        if matches(url) { return url }
+        guard let host = url.host?.lowercased(), host.hasSuffix("safelinks.protection.outlook.com"),
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              let inner = items.first(where: { $0.name == "url" })?.value,
+              let u = URL(string: inner), matches(u) else { return nil }
+        return u
+    }
+
+    private static let wrapped = try? NSRegularExpression(pattern: #"(https?://teams\.microsoft\.com/\S*)[ \t]*\r?\n(\S+)"#)
+    private static let completeTeams = try? NSRegularExpression(pattern: #"^https?://teams\.microsoft\.com/(l/meetup-join/[^/\s]+/[^/\s]+|meet/\S+)"#)
+
+    /// Removes angle brackets and re-joins a Teams URL that was hard-wrapped before it was complete.
+    static func normalise(_ text: String) -> String {
+        var t = text.replacingOccurrences(of: "<", with: " ").replacingOccurrences(of: ">", with: " ")
+        guard let wrapped, let completeTeams else { return t }
+        let ns = t as NSString
+        for m in wrapped.matches(in: t, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let head = ns.substring(with: m.range(at: 1))
+            let headRange = NSRange(location: 0, length: (head as NSString).length)
+            if completeTeams.firstMatch(in: head, range: headRange) != nil { continue }
+            let joined = head + ns.substring(with: m.range(at: 2))
+            t = (t as NSString).replacingCharacters(in: m.range, with: joined)
+        }
+        return t
+    }
+
     public static func meetingLink(url: URL?, location: String?, notes: String?) -> URL? {
-        if let url, matches(url) { return url }
+        if let url, let u = resolve(url) { return u }
         let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
         for text in [location, notes] {
             guard let text, !text.isEmpty, let detector else { continue }
-            let range = NSRange(text.startIndex..., in: text)
-            for m in detector.matches(in: text, range: range) {
-                if let u = m.url, matches(u) { return u }
+            let clean = normalise(text)
+            let range = NSRange(location: 0, length: (clean as NSString).length)
+            for m in detector.matches(in: clean, range: range) {
+                if let u = m.url, let r = resolve(u) { return r }
             }
         }
         return nil

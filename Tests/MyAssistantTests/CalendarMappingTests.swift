@@ -65,4 +65,26 @@ import Foundation
         #expect(r.start == cal.date(from: DateComponents(year: 2026, month: 11, day: 3))!)
         #expect(r.end == cal.date(from: DateComponents(year: 2026, month: 11, day: 4))!)
     }
+
+    static let teamsURL = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=%7b%7d"
+
+    @Test func safelinkUnwrapsTeams() {
+        let enc = Self.teamsURL.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!
+        let safe = "https://eur01.safelinks.protection.outlook.com/?url=\(enc)&data=05%7C01&sdata=abc"
+        #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: "Join <\(safe)>\n") == URL(string: Self.teamsURL))
+    }
+
+    @Test func angleBracketLink() {
+        #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: "Join <\(Self.teamsURL)>") == URL(string: Self.teamsURL))
+    }
+
+    @Test func teamsLinkWrappedAcrossLines() {
+        let notes = "Join: https://teams.microsoft.com/l/meetup-join/\n19%3ameeting_x%40thread.v2/0?context=%7b%7d\nMeeting ID: 1"
+        #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: notes) == URL(string: Self.teamsURL))
+    }
+
+    @Test func nonMeetingSafelinkIgnored() {
+        let safe = "https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fexample.com%2Fx&data=1"
+        #expect(CalendarMapping.meetingLink(url: nil, location: nil, notes: safe) == nil)
+    }
 }
