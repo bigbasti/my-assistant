@@ -44,9 +44,11 @@ public enum AlertMapper {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: ":@/")
         func enc(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s }
+        // Teams treats links without a chat context as channel posts and reports "can't find".
+        let context = "?context=%7B%22contextType%22%3A%22chat%22%7D"
         if let m = ids.messageId {
-            return URL(string: "msteams:/l/message/\(enc(conv))/\(enc(m))")
+            return URL(string: "msteams:/l/message/\(enc(conv))/\(enc(m))\(context)")
         }
-        return URL(string: "msteams:/l/chat/\(enc(conv))/0")
+        return URL(string: "msteams:/l/chat/\(enc(conv))/0\(context)")
     }
 }

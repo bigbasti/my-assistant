@@ -114,7 +114,7 @@ public final class CalendarReader {
     private func read(generation gen: Int? = nil) {
         if let gen, gen != generation { return }
         let date = now()
-        let range = CalendarMapping.dayRange(now: date, calendar: calendar)
+        let range = CalendarMapping.readRange(now: date, calendar: calendar)
         let predicate = store.predicateForEvents(withStart: range.start, end: range.end, calendars: nil)
         let mapped = store.events(matching: predicate).compactMap { CalendarMapping.map(Self.snapshot($0)) }
             .sorted { $0.start < $1.start }

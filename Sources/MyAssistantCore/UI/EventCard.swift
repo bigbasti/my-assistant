@@ -30,12 +30,13 @@ public struct EventCard: View {
     }
 
     @ViewBuilder private func tint(_ p: CountdownPhase) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         if case .pulsing = p {
-            Color.red.opacity(0.3).phaseAnimator([1.0, 0.55]) { v, f in
-                v.opacity(f).scaleEffect(f == 1.0 ? 1.0 : 0.97)
-            } animation: { _ in .easeInOut(duration: 0.6) }
+            shape.fill(Color.red.opacity(0.35)).phaseAnimator([1.0, 0.35]) { v, f in
+                v.opacity(f)
+            } animation: { _ in .easeInOut(duration: 0.9) }
         } else if isRed(p) {
-            Color.red.opacity(0.3)
+            shape.fill(Color.red.opacity(0.35))
         } else {
             Color.clear
         }
@@ -69,14 +70,23 @@ public struct EventCard: View {
                 Button(action: onDismiss) { Image(systemName: "xmark.circle") }
                     .buttonStyle(.plain).font(.title3).help("Dismiss")
                 if event.joinURL != nil {
-                    Button(action: onJoin) { Label("Join", systemImage: "video.fill").labelStyle(.iconOnly) }
-                        .buttonStyle(.glassProminent).tint(SourceKind.calendar.color).help("Join")
+                    Button(action: onJoin) {
+                        Image(systemName: "video.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 26)
+                            .background(SourceKind.calendar.color, in: .capsule)
+                    }
+                    .buttonStyle(.plain).help("Join meeting")
                 }
             }
         }
-        .padding(8).padding(.leading, 4)
+        .padding(.vertical, 10).padding(.trailing, 10).padding(.leading, 14)
+        .contentShape(.rect(cornerRadius: 12, style: .continuous))
         .background { tint(p) }
-        .glassEffect(.regular.tint(isRed(p) ? Color.red.opacity(0.25) : SourceKind.calendar.color.opacity(0.15)),
-                     in: .rect(cornerRadius: 12))
+        .glassEffect(.regular.tint(isRed(p) ? Color.red.opacity(0.2) : SourceKind.calendar.color.opacity(0.12)),
+                     in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay { AccentEdge(color: isRed(p) ? .red : SourceKind.calendar.color, cornerRadius: 12) }
+        .animation(.easeInOut(duration: 0.4), value: isRed(p))
     }
 }

@@ -42,6 +42,13 @@ import Foundation
         #expect(launched == ["com.microsoft.teams2"])
     }
 
+    @Test func legacyTeamsLinkGainsChatContext() {
+        let m = model(); var opened: [URL?] = []
+        m.opener = { opened.append($0) }
+        m.open(note(.teams, url: URL(string: "msteams:/l/message/19%3Aa%40unq.gbl.spaces/123")!))
+        #expect(opened == [URL(string: "msteams:/l/message/19%3Aa%40unq.gbl.spaces/123?context=%7B%22contextType%22%3A%22chat%22%7D")!])
+    }
+
     @Test func cardWithURLOpensURL() {
         let m = model(); var launched: [String] = []; var opened: [URL?] = []
         m.launchApp = { launched.append($0) }; m.opener = { opened.append($0) }

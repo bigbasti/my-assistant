@@ -28,6 +28,12 @@ public enum CalendarMapping {
         return (start, calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86400))
     }
 
+    /// Today plus tomorrow, so the panel can preview the next day.
+    public static func readRange(now: Date, calendar: Calendar) -> (start: Date, end: Date) {
+        let today = dayRange(now: now, calendar: calendar)
+        return (today.start, dayRange(now: today.end, calendar: calendar).end)
+    }
+
     private static func matches(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         let path = url.path.lowercased()

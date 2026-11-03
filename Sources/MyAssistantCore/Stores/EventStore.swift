@@ -7,18 +7,31 @@ public final class EventStore {
     private var dismissed: Set<String>
     @ObservationIgnored private var toned = Set<String>()
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let calendar: Calendar
     @ObservationIgnored public var onChange: (() -> Void)?
 
-    public init(state: PersistedState, now: @escaping () -> Date) {
+    public init(state: PersistedState, now: @escaping () -> Date, calendar: Calendar = .autoupdatingCurrent) {
         self.dismissed = state.dismissedEventIDs
         self.now = now
+        self.calendar = calendar
+    }
+
+    private var startOfTomorrow: Date {
+        CalendarMapping.dayRange(now: now(), calendar: calendar).end
     }
 
     public var today: [CalendarEvent] {
-        let t = now()
-        return events
-            .filter { !$0.isAllDay && !dismissed.contains($0.id) && $0.end > t }
-            .sorted { $0.start < $1.start }
+        let t = now(), cutoff = startOfTomorrow
+        return visible.filter { $0.end > t && $0.start < cutoff }
+    }
+
+    public var tomorrow: [CalendarEvent] {
+        let range = CalendarMapping.dayRange(now: startOfTomorrow, calendar: calendar)
+        return visible.filter { $0.start >= range.start && $0.start < range.end }
+    }
+
+    private var visible: [CalendarEvent] {
+        events.filter { !$0.isAllDay && !dismissed.contains($0.id) }.sorted { $0.start < $1.start }
     }
 
     public func replace(_ new: [CalendarEvent]) {

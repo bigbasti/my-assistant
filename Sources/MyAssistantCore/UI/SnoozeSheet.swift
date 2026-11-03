@@ -21,13 +21,22 @@ public struct SnoozeSheet: View {
             Button("Custom…") { withAnimation { custom.toggle() } }
                 .buttonStyle(.glass).frame(maxWidth: .infinity)
             if custom {
-                DatePicker("", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                DatePicker("", selection: $date, in: Date()..., displayedComponents: [.date])
                     .datePickerStyle(.graphical).labelsHidden()
+                    .frame(maxWidth: .infinity)
+                HStack {
+                    Text("Time").foregroundStyle(.secondary)
+                    Spacer()
+                    DatePicker("", selection: $date, displayedComponents: [.hourAndMinute])
+                        .datePickerStyle(.stepperField).labelsHidden()
+                }
                 Button("Snooze") { onPick(.custom(date)) }
                     .buttonStyle(.glassProminent).frame(maxWidth: .infinity)
+                    .disabled(date <= Date())
             }
         }
         .padding(16)
-        .frame(width: 240)
+        .frame(width: 260)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

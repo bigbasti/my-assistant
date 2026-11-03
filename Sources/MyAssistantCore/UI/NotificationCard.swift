@@ -42,11 +42,22 @@ public struct NotificationCard: View {
             }
             .buttonStyle(.plain).font(.title3)
         }
-        .padding(.vertical, 8).padding(.trailing, 8).padding(.leading, 12)
-        .overlay(alignment: .leading) {
-            Rectangle().fill(item.kind.color).frame(width: 4)
-        }
-        .glassEffect(.regular.tint(item.kind.color.opacity(0.25)), in: .rect(cornerRadius: 12))
-        .clipShape(.rect(cornerRadius: 12))
+        .padding(.vertical, 10).padding(.trailing, 10).padding(.leading, 14)
+        .contentShape(.rect(cornerRadius: 12))
+        .glassEffect(.regular.tint(item.kind.color.opacity(0.18)), in: .rect(cornerRadius: 12, style: .continuous))
+        .overlay { AccentEdge(color: item.kind.color, cornerRadius: 12) }
+    }
+}
+
+/// A 4 pt accent stripe on the leading edge that follows the card's rounded corners.
+struct AccentEdge: View {
+    let color: Color
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(color)
+            .mask(alignment: .leading) { Rectangle().frame(width: 4) }
+            .allowsHitTesting(false)
     }
 }

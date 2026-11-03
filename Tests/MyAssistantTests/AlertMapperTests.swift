@@ -19,7 +19,7 @@ import Foundation
         #expect(n?.title == "Teams message")
         #expect(n?.sender == "Anna")
         #expect(n?.preview == "Hello")
-        #expect(n?.openURL?.absoluteString == "msteams:/l/message/19%3Aabc_def%40unq.gbl.spaces/1793626351355")
+        #expect(n?.openURL?.absoluteString == "msteams:/l/message/19%3Aabc_def%40unq.gbl.spaces/1793626351355?context=%7B%22contextType%22%3A%22chat%22%7D")
         #expect(n?.firstSurfacedAt == Self.t)
         #expect(n?.surfacedAt == Self.t)
         #expect(n?.snoozedUntil == nil)
@@ -28,7 +28,7 @@ import Foundation
     @Test func teamsChatOnlyUsesChatLink() {
         let n = AlertMapper.map(Self.teams(["19:abc_def@unq.gbl.spaces"]))
         #expect(n?.id == "teams:aa11")
-        #expect(n?.openURL?.absoluteString == "msteams:/l/chat/19%3Aabc_def%40unq.gbl.spaces/0")
+        #expect(n?.openURL?.absoluteString == "msteams:/l/chat/19%3Aabc_def%40unq.gbl.spaces/0?context=%7B%22contextType%22%3A%22chat%22%7D")
     }
 
     @Test func teamsWithoutIDsFallsBack() {

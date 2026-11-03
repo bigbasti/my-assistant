@@ -45,7 +45,14 @@ public final class AppModel {
     public func open(_ url: URL?) { opener(url) }
 
     public func open(_ n: AssistantNotification) {
-        if let url = n.openURL { opener(url); return }
+        if let url = n.openURL {
+            // Cards saved before the chat-context fix carry Teams links without a query.
+            if url.scheme == "msteams", url.query == nil,
+               let fixed = URL(string: url.absoluteString + "?context=%7B%22contextType%22%3A%22chat%22%7D") {
+                opener(fixed); return
+            }
+            opener(url); return
+        }
         switch n.kind {
         case .mail: launchApp("com.microsoft.Outlook")
         case .teams: launchApp("com.microsoft.teams2")
