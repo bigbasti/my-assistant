@@ -11,9 +11,10 @@ let package = Package(
     targets: [
         .target(name: "MyAssistantCore"),
         .executableTarget(name: "MyAssistant", dependencies: ["MyAssistantCore"]),
-        .testTarget(
+        .executableTarget(
             name: "MyAssistantTests",
             dependencies: ["MyAssistantCore"],
+            path: "Tests/MyAssistantTests",
             swiftSettings: [.unsafeFlags(["-F", cltFrameworks])],
             linkerSettings: [.unsafeFlags(["-F", cltFrameworks, "-Xlinker", "-rpath", "-Xlinker", cltFrameworks, "-Xlinker", "-rpath", "-Xlinker", cltLib])]
         ),
