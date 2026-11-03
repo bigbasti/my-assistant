@@ -97,6 +97,7 @@ struct MyAssistantApp: App {
 #if DEBUG
             Divider()
             Button("Inject sample data") { delegate.model.injectSampleData() }
+            Button("Dump sources") { Diagnostics.dumpSources() }
 #endif
             Divider()
             Button("Quit") { NSApplication.shared.terminate(nil) }
