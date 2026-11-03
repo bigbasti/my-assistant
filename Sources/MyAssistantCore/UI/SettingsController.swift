@@ -13,6 +13,7 @@ public final class SettingsController {
     @ObservationIgnored private let dockTo: @MainActor (DockEdge) -> Void
     @ObservationIgnored private let setReserving: @MainActor (Bool) -> Void
     @ObservationIgnored private let loginItem: LoginItem
+    @ObservationIgnored private let signOutHook: @MainActor (OAuth?) async -> Void
     @ObservationIgnored private let performSignIn: @MainActor (OAuth) async throws -> Void
     @ObservationIgnored private let fetchUPN: @MainActor (OAuth) async -> String?
 
@@ -22,7 +23,9 @@ public final class SettingsController {
                 setReserving: @escaping @MainActor (Bool) -> Void,
                 loginItem: LoginItem = SystemLoginItem(),
                 performSignIn: @escaping @MainActor (OAuth) async throws -> Void = { try await $0.signIn() },
-                fetchUPN: @escaping @MainActor (OAuth) async -> String? = SettingsController.graphUPN) {
+                fetchUPN: @escaping @MainActor (OAuth) async -> String? = SettingsController.graphUPN,
+                signOutHook: @escaping @MainActor (OAuth?) async -> Void = SettingsController.defaultSignOut) {
+        self.signOutHook = signOutHook
         self.model = model
         self.restartPoller = restartPoller
         self.dockTo = dockTo
@@ -30,6 +33,10 @@ public final class SettingsController {
         self.loginItem = loginItem
         self.performSignIn = performSignIn
         self.fetchUPN = fetchUPN
+    }
+
+    public static func defaultSignOut(_ oauth: OAuth?) async {
+        if let oauth { await oauth.signOut() } else { KeychainSecretStore().delete(account: OAuth.account) }
     }
 
     private struct Me: Decodable { let userPrincipalName: String? }
@@ -41,20 +48,20 @@ public final class SettingsController {
 
     private func changed() { model.save() }
 
-    public func setClientID(_ v: String) {
-        guard model.settings.clientID != v else { return }
-        model.settings.clientID = v
+    /// Applies committed account fields. No-op when nothing changed; otherwise signs out the old
+    /// account (the Keychain slot is shared), rebuilds OAuth and restarts the poller.
+    public func applyAccount(clientID: String, tenantID: String) async {
+        let id = clientID.trimmingCharacters(in: .whitespaces)
+        let tenant = tenantID.trimmingCharacters(in: .whitespaces)
+        guard id != model.settings.clientID || tenant != model.settings.tenantID else { return }
+        await signOutHook(model.oauth)
+        model.settings.clientID = id
+        model.settings.tenantID = tenant
         model.rebuildOAuth()
         upn = nil
+        signInError = nil
         changed()
-    }
-
-    public func setTenantID(_ v: String) {
-        guard model.settings.tenantID != v else { return }
-        model.settings.tenantID = v
-        model.rebuildOAuth()
-        upn = nil
-        changed()
+        restartPoller()
     }
 
     public func setSource(_ kind: SourceKind, enabled: Bool) {
@@ -126,7 +133,7 @@ public final class SettingsController {
     }
 
     public func signOut() async {
-        await model.oauth?.signOut()
+        await signOutHook(model.oauth)
         upn = nil
         signInError = nil
         restartPoller()

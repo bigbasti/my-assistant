@@ -13,6 +13,7 @@ final class FakeLoginItem: LoginItem {
 
 @MainActor final class Effects {
     var restarts = 0
+    var signOuts = 0
     var edges: [DockEdge] = []
     var reserving: [Bool] = []
 }
@@ -38,19 +39,18 @@ final class FakeLoginItem: LoginItem {
         let e = Effects()
         let c = SettingsController(model: m, restartPoller: { e.restarts += 1 }, dockTo: { e.edges.append($0) },
                                    setReserving: { e.reserving.append($0) }, loginItem: login,
-                                   performSignIn: signIn, fetchUPN: upn)
+                                   performSignIn: signIn, fetchUPN: upn, signOutHook: { _ in e.signOuts += 1 })
         return (c, e, m)
     }
 
-    @Test func clientIDChangeRebuildsOAuthWithoutSignIn() {
+    @Test func clientIDChangeRebuildsOAuthWithoutSignIn() async {
         let (c, e, m) = make()
         #expect(m.oauth == nil)
-        c.setClientID("client-1")
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
         #expect(m.oauth != nil)
         #expect(m.settings.clientID == "client-1")
-        #expect(e.restarts == 0)
         let first = m.oauth
-        c.setTenantID("contoso.com")
+        await c.applyAccount(clientID: "client-1", tenantID: "contoso.com")
         #expect(m.oauth !== first)
     }
 
@@ -102,31 +102,56 @@ final class FakeLoginItem: LoginItem {
     @Test func signInValidatesFirst() async {
         var called = false
         let (c, e, _) = make(signIn: { _ in called = true })
-        c.setClientID("bad id!")
+        await c.applyAccount(clientID: "bad id!", tenantID: "organizations")
         await c.signIn()
         #expect(!called)
         #expect(c.signInError == "Invalid client ID")
-        #expect(e.restarts == 0)
+        #expect(e.restarts == 1)
     }
 
     @Test func signInSuccessShowsUPNAndRestarts() async {
         let (c, e, _) = make()
-        c.setClientID("client-1")
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
         await c.signIn()
         #expect(c.signInError == nil)
         #expect(c.upn == "me@x.com")
-        #expect(e.restarts == 1)
+        #expect(e.restarts == 2)
         await c.signOut()
         #expect(c.upn == nil)
-        #expect(e.restarts == 2)
+        #expect(e.restarts == 3)
     }
 
     @Test func signInFailureShowsError() async {
         let (c, e, _) = make(signIn: { _ in throw GraphError.unauthorized })
-        c.setClientID("client-1")
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
         await c.signIn()
         #expect(c.signInError != nil)
-        #expect(e.restarts == 0)
+        #expect(e.restarts == 1)
+    }
+
+    @Test func accountChangeWhileSignedInSignsOutAndRestarts() async {
+        let (c, e, m) = make()
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
+        await c.signIn()
+        #expect(c.upn == "me@x.com")
+        let signOuts = e.signOuts, restarts = e.restarts
+        await c.applyAccount(clientID: "client-2", tenantID: "organizations")
+        #expect(e.signOuts == signOuts + 1)
+        #expect(e.restarts == restarts + 1)
+        #expect(c.upn == nil)
+        #expect(m.settings.clientID == "client-2")
+    }
+
+    @Test func applyingUnchangedAccountIsNoOp() async {
+        let (c, e, m) = make()
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
+        let signOuts = e.signOuts, restarts = e.restarts
+        let oauth = m.oauth
+        await c.applyAccount(clientID: "client-1", tenantID: "organizations")
+        await c.applyAccount(clientID: " client-1 ", tenantID: "organizations")
+        #expect(e.signOuts == signOuts)
+        #expect(e.restarts == restarts)
+        #expect(m.oauth === oauth)
     }
 
     @Test func consentRequiredSurfacesFromStatus() {

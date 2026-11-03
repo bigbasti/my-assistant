@@ -21,13 +21,22 @@ public struct SettingsView: View {
 
 private struct AccountsTab: View {
     let c: SettingsController
+    @State private var clientID = ""
+    @State private var tenantID = ""
+    @FocusState private var focus: Field?
+    private enum Field { case client, tenant }
+
+    private func commit() { Task { await c.applyAccount(clientID: clientID, tenantID: tenantID) } }
 
     var body: some View {
         Form {
             Section("Microsoft Entra app") {
-                TextField("Client ID", text: Binding(get: { c.model.settings.clientID }, set: { c.setClientID($0) }))
-                TextField("Tenant ID", text: Binding(get: { c.model.settings.tenantID }, set: { c.setTenantID($0) }))
-                Text("Register an app in Entra ID as a public client with redirect URI myassistant://auth and delegated permissions Mail.Read, Calendars.Read, Chat.Read and offline_access.")
+                TextField("Client ID", text: $clientID).focused($focus, equals: .client)
+                TextField("Tenant ID", text: $tenantID).focused($focus, equals: .tenant)
+                if clientID != c.model.settings.clientID || tenantID != c.model.settings.tenantID {
+                    Text("Changing these signs you out.").font(.callout).foregroundStyle(.secondary)
+                }
+                Text("Register an app in Entra ID as a public client with redirect URI myassistant://auth and delegated permissions User.Read, Mail.Read, Calendars.Read, Chat.Read and offline_access.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section("Account") {
@@ -35,7 +44,7 @@ private struct AccountsTab: View {
                     LabeledContent("Signed in as", value: upn)
                 }
                 HStack {
-                    Button("Sign in") { Task { await c.signIn() } }.disabled(c.isSigningIn)
+                    Button("Sign in") { Task { await c.applyAccount(clientID: clientID, tenantID: tenantID); await c.signIn() } }.disabled(c.isSigningIn)
                     Button("Sign out") { Task { await c.signOut() } }
                     if c.isSigningIn { ProgressView().controlSize(.small) }
                 }
@@ -49,6 +58,9 @@ private struct AccountsTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { clientID = c.model.settings.clientID; tenantID = c.model.settings.tenantID }
+        .onSubmit { commit() }
+        .onChange(of: focus) { _, _ in commit() }
         .task { await c.loadUPN() }
     }
 }
