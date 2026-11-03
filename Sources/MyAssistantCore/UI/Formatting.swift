@@ -17,3 +17,8 @@ public func timeRangeLabel(start: Date, end: Date) -> String {
     let f = Date.FormatStyle(date: .omitted, time: .shortened)
     return "\(start.formatted(f)) – \(end.formatted(f))"
 }
+
+/// Messages glow for their first 10 minutes on the panel (also after resurfacing from snooze).
+public func isFreshMessage(surfacedAt: Date, now: Date) -> Bool {
+    now.timeIntervalSince(surfacedAt) < 600
+}

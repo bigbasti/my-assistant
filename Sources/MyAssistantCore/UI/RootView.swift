@@ -42,13 +42,17 @@ public struct RootView: View {
                         ForEach(items) { n in
                             NotificationCard(item: n, onOpen: { model.open(n) },
                                              onDone: { withAnimation(Self.motion) { model.notifications.markDone(n.id) } },
-                                             onSnooze: { o in withAnimation(Self.motion) { model.notifications.snooze(n.id, o) } })
+                                             onSnooze: { o in withAnimation(Self.motion) { model.notifications.snooze(n.id, o) } },
+                                             onDelete: n.kind == .mail ? {
+                                                 let r = await model.deleteMail(n)
+                                                 return r.message
+                                             } : nil)
                             .transition(.asymmetric(
                                 insertion: .move(edge: .top).combined(with: .opacity),
                                 removal: .scale(scale: 0.92).combined(with: .opacity)))
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 6).padding(.vertical, 8)
                     .animation(Self.motion, value: items.map(\.id))
                 }
                 .scrollIndicators(.never)

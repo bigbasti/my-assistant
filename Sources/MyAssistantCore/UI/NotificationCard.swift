@@ -5,11 +5,18 @@ public struct NotificationCard: View {
     let onOpen: () -> Void
     let onDone: () -> Void
     let onSnooze: (SnoozeOption) -> Void
+    /// Only set for mail cards; returns a message to show when nothing was deleted.
+    let onDelete: (() async -> String?)?
     @State private var showSnooze = false
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
 
     public init(item: AssistantNotification, onOpen: @escaping () -> Void,
-                onDone: @escaping () -> Void, onSnooze: @escaping (SnoozeOption) -> Void) {
+                onDone: @escaping () -> Void, onSnooze: @escaping (SnoozeOption) -> Void,
+                onDelete: (() async -> String?)? = nil) {
         self.item = item; self.onOpen = onOpen; self.onDone = onDone; self.onSnooze = onSnooze
+        self.onDelete = onDelete
     }
 
     public var body: some View {
@@ -27,6 +34,11 @@ public struct NotificationCard: View {
                 }
                 Text(item.title).font(.subheadline).lineLimit(1)
                 Text(item.preview).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                if let deleteError {
+                    Label(deleteError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                        .transition(.opacity)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture(perform: onOpen)
@@ -39,6 +51,17 @@ public struct NotificationCard: View {
                         }
                     }
                 Button(action: onDone) { Image(systemName: "checkmark.circle") }.help("Done")
+                if onDelete != nil {
+                    Group {
+                        if deleting {
+                            ProgressView().controlSize(.small).frame(width: 20, height: 20)
+                        } else {
+                            Button { confirmDelete = true } label: { Image(systemName: "trash") }
+                                .help("Delete mail")
+                                .popover(isPresented: $confirmDelete) { deleteConfirmation }
+                        }
+                    }
+                }
             }
             .buttonStyle(.plain).font(.title3)
         }
@@ -46,6 +69,57 @@ public struct NotificationCard: View {
         .contentShape(.rect(cornerRadius: 12))
         .glassEffect(.regular.tint(item.kind.color.opacity(0.18)), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay { AccentEdge(color: item.kind.color, cornerRadius: 12) }
+        .background {
+            // Re-evaluated every 30 s so the glow switches off on its own after 10 minutes.
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                if isFreshMessage(surfacedAt: item.surfacedAt, now: ctx.date) {
+                    FreshGlow(color: item.kind.color, cornerRadius: 12)
+                }
+            }
+        }
+    }
+
+    private var deleteConfirmation: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Delete this mail?").font(.headline)
+            Text("It moves to Deleted Items in your mailbox.").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Cancel") { confirmDelete = false }.buttonStyle(.glass)
+                Spacer()
+                Button("Delete", role: .destructive) {
+                    confirmDelete = false
+                    guard let onDelete else { return }
+                    deleting = true
+                    Task {
+                        let message = await onDelete()
+                        deleting = false
+                        withAnimation { deleteError = message }
+                        if message != nil {
+                            try? await Task.sleep(for: .seconds(8))
+                            withAnimation { deleteError = nil }
+                        }
+                    }
+                }
+                .buttonStyle(.glassProminent).tint(.red)
+            }
+        }
+        .padding(14).frame(width: 240)
+    }
+}
+
+/// Soft, slowly breathing halo plus outline in the source color for new messages.
+struct FreshGlow: View {
+    let color: Color
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .strokeBorder(color.opacity(0.9), lineWidth: 1.5)
+            .background(shape.fill(color.opacity(0.25)))
+            .shadow(color: color.opacity(0.8), radius: 8)
+            .phaseAnimator([0.45, 1.0]) { v, f in v.opacity(f) } animation: { _ in .easeInOut(duration: 1.8) }
+            .allowsHitTesting(false)
     }
 }
 

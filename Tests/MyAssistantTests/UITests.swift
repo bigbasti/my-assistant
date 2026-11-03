@@ -8,6 +8,12 @@ import Foundation
         #expect(countdownLabel(59.2) == "01:00")
         #expect(countdownLabel(-5) == "00:00")
     }
+    @Test func glowsWhileYoungerThanTenMinutes() {
+        let n = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(isFreshMessage(surfacedAt: n.addingTimeInterval(-599), now: n))
+        #expect(!isFreshMessage(surfacedAt: n.addingTimeInterval(-600), now: n))
+        #expect(isFreshMessage(surfacedAt: n, now: n))
+    }
     @Test func relativeTimeStrings() {
         let n = Date(timeIntervalSince1970: 1_800_000_000)
         #expect(relativeTime(from: n.addingTimeInterval(-10), now: n) == "now")
