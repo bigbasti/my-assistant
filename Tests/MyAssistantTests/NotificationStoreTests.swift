@@ -73,6 +73,7 @@ import Foundation
     }
     @Test func persistenceRoundTrip() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
         let p = Persistence(url: dir.appendingPathComponent("sub/state.json"))
         #expect(p.load().notifications.isEmpty)
         var st = PersistedState()
@@ -94,5 +95,37 @@ import Foundation
     @Test func decodesMissingKeysWithDefaults() throws {
         let st = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
         #expect(st.settings.tenantID == "organizations" && st.notifications.isEmpty)
+    }
+    @Test func flushCancelsPendingAndWritesSynchronously() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let p = Persistence(url: dir.appendingPathComponent("state.json"))
+        var stale = PersistedState(); stale.handledIDs = ["stale"]
+        var fresh = PersistedState(); fresh.handledIDs = ["fresh"]
+        p.scheduleSave(stale)
+        #expect(p.hasPendingSave)
+        p.flush(fresh)
+        #expect(!p.hasPendingSave)
+        #expect(p.load().handledIDs == ["fresh"])
+    }
+    @Test func handledOrderReconciledAfterDecode() {
+        var st = PersistedState()
+        st.handledIDs = ["a", "b", "c"]
+        st.handledOrder = ["b", "b", "zzz", "a"]
+        let s = NotificationStore(state: st, now: { self.t0 })
+        var out = PersistedState()
+        s.exportState(into: &out)
+        #expect(out.handledOrder == ["b", "a", "c"])
+        #expect(out.handledIDs == ["a", "b", "c"])
+    }
+    @Test func oversizedHandledTrimmedOnInit() {
+        var st = PersistedState()
+        let ids = (0..<5003).map { "i\($0)" }
+        st.handledIDs = Set(ids); st.handledOrder = ids
+        let s = NotificationStore(state: st, now: { self.t0 })
+        var out = PersistedState()
+        s.exportState(into: &out)
+        #expect(out.handledIDs.count == 5000 && out.handledOrder.count == 5000)
+        #expect(!out.handledIDs.contains("i2") && out.handledIDs.contains("i5002"))
     }
 }

@@ -49,6 +49,7 @@ public final class Persistence: @unchecked Sendable {
     private let url: URL
     private let lock = NSLock()
     private var pending: DispatchWorkItem?
+    private var generation = 0
     private let queue = DispatchQueue(label: "MyAssistant.persistence")
 
     public init(url: URL) { self.url = url }
@@ -66,6 +67,10 @@ public final class Persistence: @unchecked Sendable {
 
     public func save(_ state: PersistedState) {
         lock.lock(); defer { lock.unlock() }
+        write(state)
+    }
+
+    private func write(_ state: PersistedState) {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(state) else { return }
@@ -73,13 +78,36 @@ public final class Persistence: @unchecked Sendable {
         try? data.write(to: url, options: .atomic)
     }
 
+    /// True while a debounced save is waiting to run.
+    public var hasPendingSave: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return pending != nil
+    }
+
     /// Debounced save (0.5 s); later calls replace the pending one.
     public func scheduleSave(_ state: PersistedState) {
         lock.lock()
+        generation += 1
+        let gen = generation
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); defer { self.lock.unlock() }
+            guard self.generation == gen else { return }
+            self.pending = nil
+            self.write(state)
+        }
         pending?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.save(state) }
         pending = item
         lock.unlock()
         queue.asyncAfter(deadline: .now() + 0.5, execute: item)
+    }
+
+    /// Cancels any pending debounced save and writes `state` synchronously (call on quit).
+    public func flush(_ state: PersistedState) {
+        lock.lock(); defer { lock.unlock() }
+        generation += 1
+        pending?.cancel()
+        pending = nil
+        write(state)
     }
 }

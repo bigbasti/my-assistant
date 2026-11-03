@@ -17,11 +17,17 @@ public final class NotificationStore {
         self.items = state.notifications
         self.now = now
         self.calendar = calendar
-        var order = state.handledOrder.filter { state.handledIDs.contains($0) }
-        let known = Set(order)
-        order += state.handledIDs.subtracting(known).sorted()
+        var seen = Set<String>()
+        var order = state.handledOrder.filter { state.handledIDs.contains($0) && seen.insert($0).inserted }
+        order += state.handledIDs.subtracting(seen).sorted()
+        var handled = state.handledIDs
+        if order.count > Self.handledCap {
+            let drop = order.count - Self.handledCap
+            for old in order.prefix(drop) { handled.remove(old) }
+            order.removeFirst(drop)
+        }
         self.handledOrder = order
-        self.handled = state.handledIDs
+        self.handled = handled
         resurfaceDue()
     }
 
