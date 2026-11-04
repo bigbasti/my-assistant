@@ -32,8 +32,8 @@ public final class DockController {
     private var screenObserver: NSObjectProtocol?
 
     public init<Content: View>(content: Content, placement: DockPlacement? = nil) {
-        self.placement = placement ?? DockPlacement(
-            screenID: Self.mainScreenID, edge: .left)
+        self.placement = DockGeometry.rebind(placement ?? DockPlacement(
+            screenID: Self.mainScreenID, edge: .left), uuids: Self.uuids)
         panel = DockPanel(contentRect: NSRect(x: 0, y: 0, width: DockGeometry.width, height: 600))
         previewWindow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
         previewWindow.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
@@ -65,9 +65,10 @@ public final class DockController {
     }
 
     public func dock(to p: DockPlacement, animated: Bool) {
-        placement = p
+        // User choice: this becomes the remembered (preferred) placement.
+        placement = DockPlacement(screenID: p.screenID, edge: p.edge, screenUUID: Self.uuid(of: p.screenID))
         applyFrame(animated: animated)
-        onPlacementChange?(p)
+        onPlacementChange?(placement)
     }
 
     /// Called by the drag grip on mouse-down; follows the mouse until mouse-up.
@@ -104,10 +105,12 @@ public final class DockController {
         Self.screens.first { $0.id == id }?.visibleFrame ?? .zero
     }
 
+    /// Screens came or went. The preferred placement is never overwritten here: if its screen is
+    /// missing the panel shows on a fallback screen and returns once the preferred screen is back.
     private func reposition() {
-        let r = DockGeometry.resolve(placement, screens: Self.screens, mainID: Self.mainScreenID)
-        if r.id != placement.screenID {
-            placement = DockPlacement(screenID: r.id, edge: placement.edge)
+        let rebound = DockGeometry.rebind(placement, uuids: Self.uuids)
+        if rebound != placement {
+            placement = rebound
             onPlacementChange?(placement)
         }
         applyFrame(animated: false)
@@ -115,6 +118,11 @@ public final class DockController {
 
     private func applyFrame(animated: Bool) {
         let r = DockGeometry.resolve(placement, screens: Self.screens, mainID: Self.mainScreenID)
+        // Placements saved before UUIDs were stored get one as soon as their screen is shown.
+        if r.id == placement.screenID, placement.screenUUID == nil, let uuid = Self.uuid(of: r.id) {
+            placement.screenUUID = uuid
+            onPlacementChange?(placement)
+        }
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.25
@@ -123,7 +131,16 @@ public final class DockController {
         } else {
             panel.setFrame(r.frame, display: true)
         }
-        reserver?.reserve(r.frame)
+        reserver?.reserve(r.frame, screenID: r.id)
+    }
+
+    static var uuids: [CGDirectDisplayID: String] {
+        Dictionary(uniqueKeysWithValues: NSScreen.screens.compactMap { s in uuid(of: s.displayID).map { (s.displayID, $0) } })
+    }
+
+    static func uuid(of id: CGDirectDisplayID) -> String? {
+        guard let cf = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, cf) as String?
     }
 
     static var screens: [(id: CGDirectDisplayID, visibleFrame: CGRect)] {

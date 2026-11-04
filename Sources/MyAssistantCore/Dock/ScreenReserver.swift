@@ -14,6 +14,29 @@ public final class ScreenReserver {
     private var tokens: [NSObjectProtocol] = []
     private var prompted = false
     private var isEnforcing = false
+    private var reservedScreen: CGDirectDisplayID?
+    private var ledger = RestoreLedger()
+    private var handles: [Int: AXUIElement] = [:]
+
+    private func restoreWindows(leaving screenID: CGDirectDisplayID) {
+        guard let primaryH = NSScreen.screens.first?.frame.height else { ledger.forget(screenID: screenID); return }
+        var current: [Int: CGRect] = [:]
+        for key in ledger.keys(on: screenID) {
+            if let win = handles[key], let ax = frame(win) {
+                current[key] = CGRect(x: ax.minX, y: primaryH - ax.maxY, width: ax.width, height: ax.height)
+            }
+        }
+        for (key, original) in ledger.restorations(leaving: screenID, current: current) {
+            guard let win = handles[key] else { continue }
+            var size = original.size
+            var pos = CGPoint(x: original.minX, y: primaryH - original.maxY)
+            if let v = AXValueCreate(.cgPoint, &pos) { AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v) }
+            if let v = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(win, kAXSizeAttribute as CFString, v) }
+            attempts[key] = nil
+        }
+        for key in ledger.keys(on: screenID) { handles[key] = nil }
+        ledger.forget(screenID: screenID)
+    }
 
     public struct Attempt: Equatable {
         public var target: CGRect
@@ -104,7 +127,12 @@ public final class ScreenReserver {
         return result == window ? nil : result
     }
 
-    public func reserve(_ strip: CGRect?) {
+    public func reserve(_ strip: CGRect?, screenID: CGDirectDisplayID? = nil) {
+        // Leaving a screen (or turning reservation off): put back windows we resized there.
+        if let previous = reservedScreen, previous != screenID {
+            restoreWindows(leaving: previous)
+        }
+        reservedScreen = strip == nil ? nil : screenID
         self.strip = strip
         guard strip != nil else { stop(); return }
         let opts = ["AXTrustedCheckOptionPrompt": !prompted] as CFDictionary
@@ -298,6 +326,10 @@ public final class ScreenReserver {
             if let v = AXValueCreate(.cgPoint, &pos) { AXUIElementSetAttributeValue(win, kAXPositionAttribute as CFString, v) }
             let after = frame(win).map { CGRect(x: $0.minX, y: primaryH - $0.maxY, width: $0.width, height: $0.height) } ?? cocoa
             attempts[key] = Attempt(target: new, resulting: after)
+            if let screenID = reservedScreen {
+                ledger.record(key: key, screenID: screenID, original: cocoa, applied: after)
+                handles[key] = win
+            }
         }
     }
 
