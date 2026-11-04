@@ -8,6 +8,7 @@ public struct NotificationCard: View {
     /// Only set for mail cards; returns a message to show when nothing was deleted.
     let onDelete: (() async -> String?)?
     let onCreateTodo: (() -> Void)?
+    let onClearSender: (() -> Void)?
     @State private var showSnooze = false
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -16,9 +17,10 @@ public struct NotificationCard: View {
     public init(item: AssistantNotification, onOpen: @escaping () -> Void,
                 onDone: @escaping () -> Void, onSnooze: @escaping (SnoozeOption) -> Void,
                 onCreateTodo: (() -> Void)? = nil,
+                onClearSender: (() -> Void)? = nil,
                 onDelete: (() async -> String?)? = nil) {
         self.item = item; self.onOpen = onOpen; self.onDone = onDone; self.onSnooze = onSnooze
-        self.onDelete = onDelete; self.onCreateTodo = onCreateTodo
+        self.onDelete = onDelete; self.onCreateTodo = onCreateTodo; self.onClearSender = onClearSender
     }
 
     public var body: some View {
@@ -74,6 +76,10 @@ public struct NotificationCard: View {
         .contextMenu {
             if let onCreateTodo {
                 Button(action: onCreateTodo) { Label("Create To Do", systemImage: "checklist") }
+            }
+            if let onClearSender {
+                Divider()
+                Button(action: onClearSender) { Label("Clear all from \(item.sender)", systemImage: "person.crop.circle.badge.checkmark") }
             }
         }
         .background {

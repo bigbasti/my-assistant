@@ -123,3 +123,25 @@ import Foundation
         #expect(!out.handledIDs.contains("i2") && out.handledIDs.contains("i5002"))
     }
 }
+
+@MainActor @Suite struct ClearSenderTests {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    func n(_ id: String, _ kind: SourceKind, _ sender: String, ago: TimeInterval = 0) -> AssistantNotification {
+        AssistantNotification(id: id, kind: kind, title: "t", sender: sender, preview: "p", openURL: nil,
+                              firstSurfacedAt: t0.addingTimeInterval(-ago), surfacedAt: t0.addingTimeInterval(-ago))
+    }
+
+    @Test func clearsAllTeamsMessagesFromSenderIncludingSnoozedOnly() {
+        let s = NotificationStore(state: PersistedState(), now: { self.t0 })
+        s.ingest([n("teams:1", .teams, "Anna"), n("teams:2", .teams, "Anna", ago: 60), n("teams:3", .teams, "Ben"),
+                  n("mail:1", .mail, "Anna")])
+        s.snooze("teams:2", .hour1)
+        let cleared = s.clearAll(kind: .teams, sender: "Anna")
+        #expect(cleared == 2)
+        #expect(Set(s.visible.map(\.id)) == ["teams:3", "mail:1"])
+        // Handled: they never come back, and snoozed ones don't resurface.
+        s.ingest([n("teams:1", .teams, "Anna")])
+        s.tick()
+        #expect(Set(s.visible.map(\.id)) == ["teams:3", "mail:1"])
+    }
+}

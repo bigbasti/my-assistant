@@ -50,6 +50,17 @@ public final class NotificationStore {
         onChange?()
     }
 
+    /// Marks every message of `kind` from `sender` as done (snoozed ones too). Returns how many.
+    @discardableResult
+    public func clearAll(kind: SourceKind, sender: String) -> Int {
+        let ids = items.filter { $0.kind == kind && $0.sender == sender }.map(\.id)
+        guard !ids.isEmpty else { return 0 }
+        items.removeAll { ids.contains($0.id) }
+        ids.forEach(remember)
+        onChange?()
+        return ids.count
+    }
+
     public func snooze(_ id: String, _ option: SnoozeOption) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         items[i].snoozedUntil = option.resurfaceDate(now: now(), firstSurfacedAt: items[i].firstSurfacedAt, calendar: calendar)

@@ -71,6 +71,9 @@ public struct RootView: View {
                                              onDone: { withAnimation(Self.motion) { model.notifications.markDone(n.id) } },
                                              onSnooze: { o in withAnimation(Self.motion) { model.notifications.snooze(n.id, o) } },
                                              onCreateTodo: { createTodo { model.todos.add(from: n) } },
+                                             onClearSender: n.kind == .teams ? {
+                                                 withAnimation(Self.motion) { _ = model.notifications.clearAll(kind: .teams, sender: n.sender) }
+                                             } : nil,
                                              onDelete: n.kind == .mail ? {
                                                  let r = await model.deleteMail(n)
                                                  return r.message
