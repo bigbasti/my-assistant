@@ -71,8 +71,22 @@ private struct OpenSettingsButton: View {
     var body: some View {
         Button("Settings…") {
             NSApp.setActivationPolicy(.regular)
-            NSApp.activate()
             openSettings()
+            // The switch to a regular app only takes effect after this run-loop pass; asking for
+            // activation in the same instant is ignored and the window opens inactive (grey controls).
+            for delay in [0.0, 0.15, 0.4] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    NSApp.activate()
+                    for window in NSApp.windows where window.identifier?.rawValue.contains("Settings") == true {
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                }
+            }
+            // Own activation requests can be refused under cooperative activation; "opening" the
+            // already-running app through Launch Services brings it to the front like `open` does.
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config)
             DispatchQueue.main.async {
                 for window in NSApp.windows where window.identifier?.rawValue.contains("Settings") == true {
                     window.level = .floating
