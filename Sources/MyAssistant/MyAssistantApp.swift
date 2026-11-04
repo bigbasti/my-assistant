@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let reserver = ScreenReserver()
     let model = AppModel(persistence: Persistence(url: Persistence.defaultURL))
     lazy var sharingGuard = ScreenSharingGuard(model: model)
+    lazy var keeper = AppKeeper(model: model)
     lazy var coordinator = SourceCoordinator(
         model: model,
         watcher: NotificationWatcher(model: model, read: { ids throws(NotificationDBError) in
@@ -23,27 +24,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return d
     }()
 
-    lazy var settingsController = SettingsController(
-        model: model,
-        restartSources: { [coordinator] in coordinator.restart() },
-        dockTo: { [dock] edge in
-            dock.dock(to: DockPlacement(screenID: dock.placement.screenID, edge: edge), animated: true)
-        },
-        setReserving: { [dock, reserver] on in
-            if on {
-                dock.reserver = reserver
-                dock.dock(to: dock.placement, animated: false)
-            } else {
-                dock.reserver = nil
-                reserver.reserve(nil)
-            }
-        })
+    lazy var settingsController: SettingsController = {
+        let c = SettingsController(
+            model: model,
+            restartSources: { [coordinator] in coordinator.restart() },
+            dockTo: { [dock] edge in
+                dock.dock(to: DockPlacement(screenID: dock.placement.screenID, edge: edge), animated: true)
+            },
+            setReserving: { [dock, reserver] on in
+                if on {
+                    dock.reserver = reserver
+                    dock.dock(to: dock.placement, animated: false)
+                } else {
+                    dock.reserver = nil
+                    reserver.reserve(nil)
+                }
+            })
+        c.keeper = keeper
+        c.onWatchedChange = { [keeper] in keeper.check() }
+        return c
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         dock.show()
         sharingGuard.start()
         model.startTimer()
         coordinator.start()
+        keeper.start()
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {

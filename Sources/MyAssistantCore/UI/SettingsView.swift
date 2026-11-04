@@ -12,8 +12,10 @@ public struct SettingsView: View {
                 .tabItem { Label("Sources", systemImage: "tray.full") }
             GeneralTab(c: controller)
                 .tabItem { Label("General", systemImage: "gearshape") }
+            WatchedAppsTab(c: controller)
+                .tabItem { Label("Watched apps", systemImage: "arrow.clockwise.circle") }
         }
-        .frame(width: 480, height: 400)
+        .frame(width: 520, height: 440)
     }
 }
 

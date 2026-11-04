@@ -10,6 +10,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var backgroundOpacity: Double = 0
     /// Keeps the panel (and its popovers) out of screen sharing and recordings.
     public var hideFromScreenSharing = true
+    /// Global switch for restarting watched apps/processes.
+    public var keepAppsRunning = true
+    public var watched: [WatchedItem] = []
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -20,6 +23,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         playTone = try c.decodeIfPresent(Bool.self, forKey: .playTone) ?? true
         backgroundOpacity = try c.decodeIfPresent(Double.self, forKey: .backgroundOpacity) ?? 0
         hideFromScreenSharing = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing) ?? true
+        keepAppsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepAppsRunning) ?? true
+        watched = try c.decodeIfPresent([WatchedItem].self, forKey: .watched) ?? []
     }
 }
 

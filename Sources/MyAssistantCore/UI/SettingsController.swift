@@ -82,6 +82,40 @@ public final class SettingsController {
         changed()
     }
 
+    // MARK: watched apps
+
+    /// Re-runs the app keeper right away so changes take effect without waiting for its timer.
+    public var onWatchedChange: (@MainActor () -> Void)?
+    /// Source of live per-item status for the settings list.
+    public var keeper: AppKeeper?
+
+    public func setKeepAppsRunning(_ on: Bool) {
+        model.settings.keepAppsRunning = on
+        watchedChanged()
+    }
+
+    public func addWatched(_ item: WatchedItem) {
+        guard !model.settings.watched.contains(where: { $0.target == item.target }) else { return }
+        model.settings.watched.append(item)
+        watchedChanged()
+    }
+
+    public func setWatched(_ id: UUID, enabled: Bool) {
+        guard let i = model.settings.watched.firstIndex(where: { $0.id == id }) else { return }
+        model.settings.watched[i].enabled = enabled
+        watchedChanged()
+    }
+
+    public func removeWatched(_ id: UUID) {
+        model.settings.watched.removeAll { $0.id == id }
+        watchedChanged()
+    }
+
+    private func watchedChanged() {
+        changed()
+        onWatchedChange?()
+    }
+
     public func setLaunchAtLogin(_ on: Bool) {
         launchError = nil
         do {

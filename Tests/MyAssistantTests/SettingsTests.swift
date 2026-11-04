@@ -53,6 +53,24 @@ final class FakeLoginItem: LoginItem {
         return (c, e, m)
     }
 
+    @Test func watchedItemsAddDedupeToggleRemove() {
+        let (c, _, m) = make()
+        var checks = 0
+        c.onWatchedChange = { checks += 1 }
+        let slack = WatchedItem(name: "Slack", target: .app(bundleID: "com.tinyspeck.slackmacgap", path: "/Applications/Slack.app"))
+        c.addWatched(slack)
+        c.addWatched(WatchedItem(name: "Slack again", target: .app(bundleID: "com.tinyspeck.slackmacgap", path: "/Applications/Slack.app")))
+        #expect(m.settings.watched.map(\.name) == ["Slack"])
+        c.setWatched(slack.id, enabled: false)
+        #expect(m.settings.watched.first?.enabled == false)
+        c.setKeepAppsRunning(false)
+        #expect(!m.settings.keepAppsRunning)
+        c.removeWatched(slack.id)
+        #expect(m.settings.watched.isEmpty)
+        #expect(checks == 4)
+        #expect(m.persistence.hasPendingSave)
+    }
+
     @Test func hideFromScreenSharingDefaultsOn() throws {
         let old = #"{"settings":{"playTone":false}}"#.data(using: .utf8)!
         #expect(try JSONDecoder().decode(PersistedState.self, from: old).settings.hideFromScreenSharing)
