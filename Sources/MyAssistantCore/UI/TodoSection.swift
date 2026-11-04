@@ -168,7 +168,8 @@ struct TodoDetail: View {
                 .onChange(of: title) { model.todos.rename(item.id, title) }
 
             if editingNote {
-                RichNoteEditor(text: Binding(get: { item.note }, set: { model.todos.setNote(item.id, $0) })) {
+                RichNoteEditor(text: Binding(get: { NoteFormatting.withDefaultColor(item.note) },
+                                             set: { model.todos.setNote(item.id, NoteFormatting.withoutDefaultColor($0)) })) {
                     withAnimation(TodoSection.motion) { editingNote = false }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))

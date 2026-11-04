@@ -25,6 +25,21 @@ enum NoteFormatting {
             s + 1 < chars.count && String(chars[s..<s + 2]) == bullet
         }
     }
+
+    /// The rich editor draws text without a colour in black, even on the dark panel.
+    /// While editing, such runs get the theme's primary colour…
+    static func withDefaultColor(_ text: AttributedString) -> AttributedString {
+        var t = text
+        for run in t.runs where run.foregroundColor == nil { t[run.range].foregroundColor = .primary }
+        return t
+    }
+
+    /// …which is removed again before saving, so stored notes keep following light/dark mode.
+    static func withoutDefaultColor(_ text: AttributedString) -> AttributedString {
+        var t = text
+        for run in t.runs where run.foregroundColor == .primary { t[run.range].foregroundColor = nil }
+        return t
+    }
 }
 
 /// 10-line rich-text editor with a formatting toolbar acting on the selection.
@@ -39,8 +54,29 @@ struct RichNoteEditor: View {
 
     private static let sizes: [(String, CGFloat)] = [("Small", 11), ("Normal", 13), ("Large", 17), ("Title", 22)]
     private static let colors: [(String, Color?)] = [
-        ("Default", nil), ("Red", .red), ("Orange", .orange), ("Green", .green), ("Blue", .blue), ("Purple", .purple),
+        ("Default", nil), ("Red", .red), ("Orange", .orange), ("Yellow", .yellow), ("Green", .green),
+        ("Mint", .mint), ("Teal", .teal), ("Blue", .blue), ("Indigo", .indigo), ("Purple", .purple),
+        ("Pink", .pink), ("Magenta", Color(red: 0.89, green: 0, blue: 0.45)), ("Brown", .brown), ("Gray", .gray),
     ]
+
+    /// Menus tint template images; a pre-drawn, non-template dot keeps its real colour.
+    /// "Default" shows a ring in the current text colour.
+    static func swatch(_ color: Color?) -> NSImage {
+        let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            let dot = NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1))
+            if let color {
+                NSColor(color).setFill()
+                dot.fill()
+            } else {
+                NSColor.labelColor.setStroke()
+                dot.lineWidth = 1.5
+                dot.stroke()
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -65,7 +101,7 @@ struct RichNoteEditor: View {
             Menu {
                 ForEach(Self.colors, id: \.0) { name, color in
                     Button { apply { $0.foregroundColor = color } } label: {
-                        Label(name, systemImage: "circle.fill").foregroundStyle(color ?? .primary)
+                        Label { Text(name) } icon: { Image(nsImage: Self.swatch(color)) }
                     }
                 }
             } label: { Image(systemName: "paintpalette") }

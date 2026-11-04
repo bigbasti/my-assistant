@@ -157,3 +157,16 @@ import SwiftUI
         #expect(!NoteFormatting.allBulleted(in: "• a\nb", starts: [0, 4]))
     }
 }
+
+@Suite struct NoteColorTests {
+    @Test func uncoloredRunsGetPrimaryWhileEditingAndLoseItWhenSaved() {
+        var note = AttributedString("plain red")
+        note[note.range(of: "red")!].foregroundColor = .red
+        let editing = NoteFormatting.withDefaultColor(note)
+        #expect(editing[editing.range(of: "plain")!].foregroundColor == .primary)
+        #expect(editing[editing.range(of: "red")!].foregroundColor == .red)
+        let saved = NoteFormatting.withoutDefaultColor(editing)
+        #expect(saved[saved.range(of: "plain")!].foregroundColor == nil)
+        #expect(saved[saved.range(of: "red")!].foregroundColor == .red)
+    }
+}
