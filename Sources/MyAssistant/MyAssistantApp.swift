@@ -15,10 +15,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }),
         calendar: CalendarReader(model: model))
     lazy var dock: DockController = {
-        let d = DockController(content: RootView(model: model), placement: model.state.dock)
+        let d = DockController(content: RootView(model: model), placement: model.state.dock,
+                               width: CGFloat(model.settings.panelWidth))
         if model.settings.reserveScreenSpace { d.reserver = reserver }
         d.onPlacementChange = { [model] p in
             model.state.dock = p
+            model.save()
+        }
+        d.onWidthChange = { [model] w in
+            model.settings.panelWidth = Double(w)
             model.save()
         }
         return d

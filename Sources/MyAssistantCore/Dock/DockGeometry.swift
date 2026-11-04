@@ -51,8 +51,17 @@ public struct RestoreLedger: Sendable {
 
 public enum DockGeometry {
     public static let width: CGFloat = 360
+    public static let minWidth: CGFloat = 280
+    public static let maxWidth: CGFloat = 640
 
-    public static func frame(for edge: DockEdge, in visibleFrame: CGRect) -> CGRect {
+    public static func clampWidth(_ w: CGFloat) -> CGFloat { min(maxWidth, max(minWidth, w)) }
+
+    /// New panel width while dragging a side; the inner edge faces the screen centre.
+    public static func resizedWidth(start: CGFloat, dragDX: CGFloat, edge: DockEdge) -> CGFloat {
+        clampWidth(edge == .left ? start + dragDX : start - dragDX)
+    }
+
+    public static func frame(for edge: DockEdge, in visibleFrame: CGRect, width: CGFloat = width) -> CGRect {
         let x = edge == .left ? visibleFrame.minX : visibleFrame.maxX - width
         return CGRect(x: x, y: visibleFrame.minY, width: width, height: visibleFrame.height)
     }
@@ -70,13 +79,14 @@ public enum DockGeometry {
     public static func resolve(
         _ p: DockPlacement,
         screens: [(id: CGDirectDisplayID, visibleFrame: CGRect)],
-        mainID: CGDirectDisplayID
+        mainID: CGDirectDisplayID,
+        width: CGFloat = width
     ) -> (id: CGDirectDisplayID, frame: CGRect) {
         let screen = screens.first { $0.id == p.screenID }
             ?? screens.first { $0.id == mainID }
             ?? screens.first
         guard let screen else { return (mainID, .zero) }
-        return (screen.id, frame(for: p.edge, in: screen.visibleFrame))
+        return (screen.id, frame(for: p.edge, in: screen.visibleFrame, width: width))
     }
 
     /// Points the placement at the screen with its saved UUID, if that screen is connected.

@@ -44,6 +44,23 @@ import Foundation
         let p = try JSONDecoder().decode(DockPlacement.self, from: #"{"screenID":2,"edge":"left"}"#.data(using: .utf8)!)
         #expect(p == DockPlacement(screenID: 2, edge: .left))
     }
+    @Test func customWidthFrames() {
+        #expect(DockGeometry.frame(for: .left, in: s1.visibleFrame, width: 500) == CGRect(x: 0, y: 0, width: 500, height: 875))
+        #expect(DockGeometry.frame(for: .right, in: s1.visibleFrame, width: 500) == CGRect(x: 940, y: 0, width: 500, height: 875))
+    }
+    @Test func resizeFollowsInnerEdgeAndClamps() {
+        // Left dock: dragging right widens. Right dock: dragging left widens.
+        #expect(DockGeometry.resizedWidth(start: 360, dragDX: 40, edge: .left) == 400)
+        #expect(DockGeometry.resizedWidth(start: 360, dragDX: -40, edge: .right) == 400)
+        #expect(DockGeometry.resizedWidth(start: 360, dragDX: -500, edge: .left) == DockGeometry.minWidth)
+        #expect(DockGeometry.resizedWidth(start: 360, dragDX: -900, edge: .right) == DockGeometry.maxWidth)
+        #expect(DockGeometry.minWidth == 280 && DockGeometry.maxWidth == 640 && DockGeometry.width == 360)
+    }
+    @Test func panelWidthSettingDefaultsAndClampsOnDecode() throws {
+        #expect(AppSettings().panelWidth == 360)
+        let s = try JSONDecoder().decode(AppSettings.self, from: #"{"panelWidth":9999}"#.data(using: .utf8)!)
+        #expect(s.panelWidth == 640)
+    }
 }
 
 @Suite struct RestoreLedgerTests {

@@ -17,6 +17,9 @@ public final class DockPanel: NSPanel {
         backgroundColor = .clear
         // The glass draws its own edge; a window shadow turns into a thick dark border when the panel is key.
         hasShadow = false
+        // Transparent pixels would otherwise pass clicks through to the window behind, which
+        // makes the invisible resize handles at the panel's sides unclickable.
+        ignoresMouseEvents = false
     }
 }
 
@@ -24,6 +27,9 @@ public final class DockPanel: NSPanel {
 public final class DockController {
     public private(set) var placement: DockPlacement
     public var onPlacementChange: ((DockPlacement) -> Void)?
+    /// Called once when a side-drag resize ends, with the final width.
+    public var onWidthChange: ((CGFloat) -> Void)?
+    public private(set) var width: CGFloat
     public var reserver: ScreenReserver?
 
     private let panel: DockPanel
@@ -31,7 +37,8 @@ public final class DockController {
     private var dragTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
 
-    public init<Content: View>(content: Content, placement: DockPlacement? = nil) {
+    public init<Content: View>(content: Content, placement: DockPlacement? = nil, width: CGFloat = DockGeometry.width) {
+        self.width = DockGeometry.clampWidth(width)
         self.placement = DockGeometry.rebind(placement ?? DockPlacement(
             screenID: Self.mainScreenID, edge: .left), uuids: Self.uuids)
         panel = DockPanel(contentRect: NSRect(x: 0, y: 0, width: DockGeometry.width, height: 600))
@@ -49,7 +56,9 @@ public final class DockController {
         v.layer?.cornerRadius = 12
         previewWindow.contentView = v
 
-        let host = NSHostingView(rootView: content.environment(\.dockBeginDrag, { [weak self] in self?.beginDrag() }))
+        let host = NSHostingView(rootView: content
+            .environment(\.dockBeginDrag, { [weak self] in self?.beginDrag() })
+            .environment(\.dockBeginResize, { [weak self] in self?.beginResize() }))
         panel.contentView = host
 
         screenObserver = NotificationCenter.default.addObserver(
@@ -82,7 +91,7 @@ public final class DockController {
                 let m = NSEvent.mouseLocation
                 let n = self.nearest(m)
                 self.panel.setFrameOrigin(NSPoint(x: startOrigin.x + m.x - grab.x, y: startOrigin.y + m.y - grab.y))
-                self.previewWindow.setFrame(DockGeometry.frame(for: n.edge, in: self.visible(of: n.screenID)), display: true)
+                self.previewWindow.setFrame(DockGeometry.frame(for: n.edge, in: self.visible(of: n.screenID), width: self.width), display: true)
                 try? await Task.sleep(for: .milliseconds(16))
             }
             guard let self else { return }
@@ -92,6 +101,37 @@ public final class DockController {
             self.dock(to: self.nearest(NSEvent.mouseLocation), animated: true)
         }
     }
+
+    private var resizeTask: Task<Void, Never>?
+
+    /// Called by a side handle on mouse-down; resizes live until mouse-up, then reports the width once.
+    public func beginResize() {
+        guard resizeTask == nil, dragTask == nil else { return }
+        let grabX = NSEvent.mouseLocation.x
+        let startWidth = width
+        resizeTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled, NSEvent.pressedMouseButtons & 1 != 0 {
+                let w = DockGeometry.resizedWidth(start: startWidth, dragDX: NSEvent.mouseLocation.x - grabX,
+                                                  edge: self.currentEdge)
+                if w != self.width {
+                    self.width = w
+                    self.applyFrame(animated: false, reserve: false)
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            guard let self else { return }
+            self.resizeTask = nil
+            // Use the final mouse position (the loop may exit before seeing the last movement).
+            self.width = DockGeometry.resizedWidth(start: startWidth, dragDX: NSEvent.mouseLocation.x - grabX,
+                                                   edge: self.currentEdge).rounded()
+            // Push other windows aside only once, at the final width, to avoid fighting them mid-drag.
+            self.applyFrame(animated: false)
+            self.onWidthChange?(self.width)
+        }
+    }
+
+    /// Edge the panel is shown on right now (the preferred one, or the fallback screen's same edge).
+    private var currentEdge: DockEdge { placement.edge }
 
     public func cancelDrag() {
         dragTask?.cancel()
@@ -116,8 +156,8 @@ public final class DockController {
         applyFrame(animated: false)
     }
 
-    private func applyFrame(animated: Bool) {
-        let r = DockGeometry.resolve(placement, screens: Self.screens, mainID: Self.mainScreenID)
+    private func applyFrame(animated: Bool, reserve: Bool = true) {
+        let r = DockGeometry.resolve(placement, screens: Self.screens, mainID: Self.mainScreenID, width: width)
         // Placements saved before UUIDs were stored get one as soon as their screen is shown.
         if r.id == placement.screenID, placement.screenUUID == nil, let uuid = Self.uuid(of: r.id) {
             placement.screenUUID = uuid
@@ -131,7 +171,7 @@ public final class DockController {
         } else {
             panel.setFrame(r.frame, display: true)
         }
-        reserver?.reserve(r.frame, screenID: r.id)
+        if reserve { reserver?.reserve(r.frame, screenID: r.id) }
     }
 
     static var uuids: [CGDirectDisplayID: String] {
@@ -156,7 +196,12 @@ extension NSScreen {
 }
 
 private struct DockBeginDragKey: EnvironmentKey { static let defaultValue: @MainActor () -> Void = {} }
+private struct DockBeginResizeKey: EnvironmentKey { static let defaultValue: @MainActor () -> Void = {} }
 public extension EnvironmentValues {
+    var dockBeginResize: @MainActor () -> Void {
+        get { self[DockBeginResizeKey.self] }
+        set { self[DockBeginResizeKey.self] = newValue }
+    }
     var dockBeginDrag: @MainActor () -> Void {
         get { self[DockBeginDragKey.self] }
         set { self[DockBeginDragKey.self] = newValue }
@@ -170,6 +215,22 @@ public struct DragGrip: View {
         Capsule().fill(.secondary.opacity(0.5)).frame(width: 36, height: 4)
             .frame(maxWidth: .infinity).frame(height: 24)
             .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { _ in begin() })
+    }
+}
+
+/// Invisible strip on a side of the panel; dragging it changes the panel width.
+public struct ResizeHandle: View {
+    @Environment(\.dockBeginResize) private var begin
+    public init() {}
+    public var body: some View {
+        Color.clear
+            .frame(width: 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
             .gesture(DragGesture(minimumDistance: 0).onChanged { _ in begin() })
     }
 }

@@ -26,6 +26,8 @@ public struct RootView: View {
         }
         .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
         .padding(8)
+        .overlay(alignment: .leading) { ResizeHandle() }
+        .overlay(alignment: .trailing) { ResizeHandle() }
     }
 
     static let motion: Animation = .spring(response: 0.42, dampingFraction: 0.86)

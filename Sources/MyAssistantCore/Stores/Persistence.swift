@@ -13,6 +13,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Global switch for restarting watched apps/processes.
     public var keepAppsRunning = true
     public var watched: [WatchedItem] = []
+    /// Panel width in points, set by dragging its sides.
+    public var panelWidth: Double = 360
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -25,6 +27,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hideFromScreenSharing = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing) ?? true
         keepAppsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepAppsRunning) ?? true
         watched = try c.decodeIfPresent([WatchedItem].self, forKey: .watched) ?? []
+        panelWidth = Double(DockGeometry.clampWidth(CGFloat(try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 360)))
     }
 }
 
