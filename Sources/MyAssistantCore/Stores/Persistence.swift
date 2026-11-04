@@ -34,7 +34,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 public struct PersistedState: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case notifications, handledIDs, handledOrder, dismissedEventIDs, dock, settings
-        case bootstrappedSources, sourcesSeen, alertsBootstrapped
+        case bootstrappedSources, sourcesSeen, alertsBootstrapped, todos
     }
 
     public var notifications: [AssistantNotification] = []
@@ -46,6 +46,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
     public var settings = AppSettings()
     public var bootstrappedSources: Set<SourceKind> = []
     public var sourcesSeen: Set<SourceKind> = []
+    public var todos: [TodoItem] = []
     public init() {}
 
     public func encode(to encoder: Encoder) throws {
@@ -58,6 +59,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
         try c.encode(settings, forKey: .settings)
         try c.encode(bootstrappedSources, forKey: .bootstrappedSources)
         try c.encode(sourcesSeen, forKey: .sourcesSeen)
+        try c.encode(todos, forKey: .todos)
     }
 
     public init(from decoder: Decoder) throws {
@@ -74,6 +76,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
             bootstrappedSources = [.teams, .mail]
         }
         sourcesSeen = try c.decodeIfPresent(Set<SourceKind>.self, forKey: .sourcesSeen) ?? []
+        todos = try c.decodeIfPresent([TodoItem].self, forKey: .todos) ?? []
     }
 }
 

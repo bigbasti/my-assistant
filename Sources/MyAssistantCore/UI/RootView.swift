@@ -2,7 +2,18 @@ import SwiftUI
 
 public struct RootView: View {
     let model: AppModel
+    @State private var todosExpanded = false
+    @State private var openTodo: UUID?
+    @State private var todoContent: CGFloat = 32
     public init(model: AppModel) { self.model = model }
+
+    /// Height of the To Dos section: 50 % when expanded, otherwise its content (+ header),
+    /// capped at 30 % of the panel, or 45 % while a note is open.
+    private func todosHeight(_ available: CGFloat) -> CGFloat {
+        if todosExpanded { return available * 0.5 }
+        let cap = available * (openTodo == nil ? 0.30 : 0.45)
+        return min(cap, todoContent + 40)
+    }
 
     public var body: some View {
         let _ = model.tickCount
@@ -10,11 +21,16 @@ public struct RootView: View {
             DragGrip()
             GeometryReader { geo in
                 let spacing: CGFloat = 12
-                let available = max(0, geo.size.height - spacing)
+                let available = max(0, geo.size.height - spacing * 2)
+                let todosH = todosHeight(available)
+                let rest = available - todosH
                 VStack(spacing: spacing) {
-                    messages.frame(height: available * 2 / 3)
-                    calendar.frame(height: available / 3)
+                    messages.frame(height: rest * 2 / 3)
+                    TodoSection(model: model, expanded: $todosExpanded, openID: $openTodo, contentHeight: $todoContent)
+                        .frame(height: todosH)
+                    calendar.frame(height: rest / 3)
                 }
+                .animation(Self.motion, value: todosH)
             }
             .padding(.horizontal, 8).padding(.bottom, 8)
         }
@@ -54,6 +70,7 @@ public struct RootView: View {
                             NotificationCard(item: n, onOpen: { model.open(n) },
                                              onDone: { withAnimation(Self.motion) { model.notifications.markDone(n.id) } },
                                              onSnooze: { o in withAnimation(Self.motion) { model.notifications.snooze(n.id, o) } },
+                                             onCreateTodo: { createTodo { model.todos.add(from: n) } },
                                              onDelete: n.kind == .mail ? {
                                                  let r = await model.deleteMail(n)
                                                  return r.message
@@ -108,10 +125,17 @@ public struct RootView: View {
         }
     }
 
+    private func createTodo(_ make: () -> UUID) {
+        withAnimation(Self.motion) { openTodo = make() }
+    }
+
     private func eventCard(_ e: CalendarEvent) -> some View {
         EventCard(event: e, onOpen: { model.open(e.webLink) },
                   onJoin: { model.open(e.joinURL) },
                   onDismiss: { withAnimation(Self.motion) { model.events.dismiss(e.id) } })
+        .contextMenu {
+            Button { createTodo { model.todos.add(from: e) } } label: { Label("Create To Do", systemImage: "checklist") }
+        }
         .transition(.scale(scale: 0.92).combined(with: .opacity))
     }
 

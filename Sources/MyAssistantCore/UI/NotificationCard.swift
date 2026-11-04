@@ -7,6 +7,7 @@ public struct NotificationCard: View {
     let onSnooze: (SnoozeOption) -> Void
     /// Only set for mail cards; returns a message to show when nothing was deleted.
     let onDelete: (() async -> String?)?
+    let onCreateTodo: (() -> Void)?
     @State private var showSnooze = false
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -14,9 +15,10 @@ public struct NotificationCard: View {
 
     public init(item: AssistantNotification, onOpen: @escaping () -> Void,
                 onDone: @escaping () -> Void, onSnooze: @escaping (SnoozeOption) -> Void,
+                onCreateTodo: (() -> Void)? = nil,
                 onDelete: (() async -> String?)? = nil) {
         self.item = item; self.onOpen = onOpen; self.onDone = onDone; self.onSnooze = onSnooze
-        self.onDelete = onDelete
+        self.onDelete = onDelete; self.onCreateTodo = onCreateTodo
     }
 
     public var body: some View {
@@ -69,6 +71,11 @@ public struct NotificationCard: View {
         .contentShape(.rect(cornerRadius: 12))
         .glassEffect(.regular.tint(item.kind.color.opacity(0.18)), in: .rect(cornerRadius: 12, style: .continuous))
         .overlay { AccentEdge(color: item.kind.color, cornerRadius: 12) }
+        .contextMenu {
+            if let onCreateTodo {
+                Button(action: onCreateTodo) { Label("Create To Do", systemImage: "checklist") }
+            }
+        }
         .background {
             // Re-evaluated every 30 s so the glow switches off on its own after 10 minutes.
             TimelineView(.periodic(from: .now, by: 30)) { ctx in

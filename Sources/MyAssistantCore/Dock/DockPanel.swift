@@ -1,9 +1,22 @@
 import AppKit
 import SwiftUI
 
+/// Lets the first click on the (non-activating) panel reach SwiftUI tap gestures instead of
+/// only making the panel key; otherwise cards and to-dos need a second click.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 public final class DockPanel: NSPanel {
     public override var canBecomeKey: Bool { true }
     public override var canBecomeMain: Bool { false }
+
+    /// SwiftUI only starts tap gestures in the key window; become key before delivering the
+    /// first click so a single click opens cards and to-dos (no "click twice").
+    public override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, !isKeyWindow { makeKey() }
+        super.sendEvent(event)
+    }
 
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect,
@@ -56,7 +69,7 @@ public final class DockController {
         v.layer?.cornerRadius = 12
         previewWindow.contentView = v
 
-        let host = NSHostingView(rootView: content
+        let host = FirstMouseHostingView(rootView: content
             .environment(\.dockBeginDrag, { [weak self] in self?.beginDrag() })
             .environment(\.dockBeginResize, { [weak self] in self?.beginResize() }))
         panel.contentView = host

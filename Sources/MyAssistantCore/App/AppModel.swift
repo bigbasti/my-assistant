@@ -8,6 +8,7 @@ public final class AppModel {
     public var state: PersistedState
     public let notifications: NotificationStore
     public let events: EventStore
+    public let todos: TodoStore
     public var status: [SourceKind: SourceStatus] = [:]
     @ObservationIgnored public var playTone: @MainActor () -> Void = { AppModel.playChime() }
     @ObservationIgnored public var opener: @MainActor (URL?) -> Void = { Opener.open($0) }
@@ -31,14 +32,17 @@ public final class AppModel {
         self.state = s
         notifications = NotificationStore(state: s, now: now)
         events = EventStore(state: s, now: now)
+        todos = TodoStore(state: s, now: now)
         notifications.onChange = { [weak self] in self?.save() }
         events.onChange = { [weak self] in self?.save() }
+        todos.onChange = { [weak self] in self?.save() }
     }
 
     private func exported() -> PersistedState {
         var s = state
         notifications.exportState(into: &s)
         events.exportState(into: &s)
+        todos.exportState(into: &s)
         state = s
         return s
     }
@@ -58,6 +62,16 @@ public final class AppModel {
         case .mail: launchApp("com.microsoft.Outlook")
         case .teams: launchApp("com.microsoft.teams2")
         case .calendar: break
+        }
+    }
+
+    /// Opens what a to-do was created from, exactly like clicking the original card.
+    public func open(_ ref: TodoReference) {
+        switch ref.kind {
+        case .calendar: open(ref.url)
+        case .teams, .mail:
+            open(AssistantNotification(id: "ref", kind: ref.kind, title: "", sender: ref.label, preview: "",
+                                       openURL: ref.url, firstSurfacedAt: clock(), surfacedAt: clock()))
         }
     }
 
