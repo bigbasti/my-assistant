@@ -59,3 +59,16 @@ extension ScreenReserverTests {
         #expect(ScreenReserver.moveAside(CGRect(x: 500, y: 0, width: 300, height: 200), avoiding: strip, in: visible) == nil)
     }
 }
+
+@Suite struct FullscreenRuleTests {
+    let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+
+    @Test func windowCoveringWholeScreenCounts() {
+        #expect(FullscreenRule.isCovering(screen, screen: screen))
+        #expect(FullscreenRule.isCovering(screen.insetBy(dx: -0.5, dy: -0.5), screen: screen))
+    }
+    @Test func maximizedWindowBelowMenuBarDoesNot() {
+        #expect(!FullscreenRule.isCovering(CGRect(x: 0, y: 0, width: 1512, height: 949), screen: screen))
+        #expect(!FullscreenRule.isCovering(CGRect(x: 100, y: 0, width: 1412, height: 982), screen: screen))
+    }
+}

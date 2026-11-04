@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel(persistence: Persistence(url: Persistence.defaultURL))
     lazy var sharingGuard = ScreenSharingGuard(model: model)
     lazy var keeper = AppKeeper(model: model)
+    lazy var fullscreenWatcher = FullscreenWatcher(
+        panelScreen: { [unowned self] in self.dock.currentScreen },
+        setHidden: { [unowned self] hidden in self.dock.setTemporarilyHidden(hidden) })
     lazy var coordinator = SourceCoordinator(
         model: model,
         watcher: NotificationWatcher(model: model, read: { ids throws(NotificationDBError) in
@@ -56,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.startTimer()
         coordinator.start()
         keeper.start()
+        fullscreenWatcher.start()
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {

@@ -23,7 +23,8 @@ public final class DockPanel: NSPanel {
                    styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                    backing: .buffered, defer: false)
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        // No .fullScreenAuxiliary: the panel must not appear over full-screen apps and videos.
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         isOpaque = false
@@ -84,6 +85,25 @@ public final class DockController {
     public func show() {
         applyFrame(animated: false)
         panel.orderFrontRegardless()
+    }
+
+    /// Screen the panel is currently shown on.
+    public var currentScreen: NSScreen? {
+        let id = DockGeometry.resolve(placement, screens: Self.screens, mainID: Self.mainScreenID, width: width).id
+        return NSScreen.screens.first { $0.displayID == id }
+    }
+
+    /// Hides the panel while something is full screen on its screen; fades back in afterwards.
+    public func setTemporarilyHidden(_ hidden: Bool) {
+        if hidden {
+            NSAnimationContext.runAnimationGroup({ $0.duration = 0.2; panel.animator().alphaValue = 0 }) { [panel] in
+                MainActor.assumeIsolated { if panel.alphaValue == 0 { panel.orderOut(nil) } }
+            }
+        } else {
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { $0.duration = 0.25; panel.animator().alphaValue = 1 }
+        }
     }
 
     public func dock(to p: DockPlacement, animated: Bool) {

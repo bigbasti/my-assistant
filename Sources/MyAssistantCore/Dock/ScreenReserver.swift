@@ -314,6 +314,8 @@ public final class ScreenReserver {
                   bool(win, "AXMinimized") != true,
                   let ax = frame(win) else { continue }
             let cocoa = CGRect(x: ax.minX, y: primaryH - ax.maxY, width: ax.width, height: ax.height)
+            // Leave "fake" full-screen windows (videos, presentations) alone; the panel hides instead.
+            if FullscreenRule.isCovering(cocoa, screen: screen.frame) { continue }
             let target = mode == .fit
                 ? Self.clamp(cocoa, avoiding: strip, in: screen.visibleFrame)
                 : Self.moveAside(cocoa, avoiding: strip, in: screen.visibleFrame)
