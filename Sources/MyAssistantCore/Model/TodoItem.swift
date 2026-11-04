@@ -7,7 +7,12 @@ public struct TodoReference: Codable, Equatable, Sendable {
     public var url: URL?
     /// Sender or meeting title, shown as a hint on the to-do.
     public var label: String
-    public init(kind: SourceKind, url: URL?, label: String) { self.kind = kind; self.url = url; self.label = label }
+    /// For mails: used to find the exact message in Apple Mail.
+    public var subject: String?
+    public var received: Date?
+    public init(kind: SourceKind, url: URL?, label: String, subject: String? = nil, received: Date? = nil) {
+        self.kind = kind; self.url = url; self.label = label; self.subject = subject; self.received = received
+    }
 }
 
 public struct TodoItem: Codable, Equatable, Identifiable, Sendable {

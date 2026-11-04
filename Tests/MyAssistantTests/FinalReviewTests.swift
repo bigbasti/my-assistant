@@ -28,10 +28,11 @@ import Foundation
                             now: { Date(timeIntervalSince1970: 1_800_000_000) }, dbPath: "/nonexistent/\(UUID())/db")
     }
 
-    @Test func mailCardLaunchesOutlook() {
+    @Test func mailCardLaunchesOutlook() async {
         let m = model(); var launched: [String] = []; var opened: [URL?] = []
         m.launchApp = { launched.append($0) }; m.opener = { opened.append($0) }
-        m.open(note(.mail))
+        // Not found in Apple Mail (default) → Outlook opens.
+        await m.openMail(m.notificationQuery(note(.mail)))
         #expect(launched == ["com.microsoft.Outlook"] && opened.isEmpty)
     }
 

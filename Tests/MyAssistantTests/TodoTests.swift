@@ -86,7 +86,7 @@ import SwiftUI
         #expect(ta.title == "Please review the deck")
         #expect(ta.reference == TodoReference(kind: .teams, url: URL(string: "msteams:/l/chat/x/0"), label: "Anna"))
         #expect(tb.title == "Quarterly report")
-        #expect(tb.reference == TodoReference(kind: .mail, url: nil, label: "Ben"))
+        #expect(tb.reference == TodoReference(kind: .mail, url: nil, label: "Ben", subject: "Quarterly report", received: t0))
     }
 
     @Test func createFromEventUsesTitleAndWebLink() {

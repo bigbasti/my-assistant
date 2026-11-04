@@ -115,7 +115,7 @@ public struct RootView: View {
                             ForEach(upcoming) { e in eventCard(e) }
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 6).padding(.vertical, 8)
                     .animation(Self.motion, value: events.map(\.id) + upcoming.map(\.id))
                 }
                 .scrollIndicators(.never)

@@ -65,8 +65,11 @@ public final class TodoStore {
     @discardableResult
     public func add(from n: AssistantNotification) -> UUID {
         let title = n.kind == .teams ? n.preview : n.title
+        let isMail = n.kind == .mail
         return add(title: title.isEmpty ? n.title : title,
-                   reference: TodoReference(kind: n.kind, url: n.openURL, label: n.sender))
+                   reference: TodoReference(kind: n.kind, url: n.openURL, label: n.sender,
+                                            subject: isMail ? n.title : nil,
+                                            received: isMail ? n.firstSurfacedAt : nil))
     }
 
     @discardableResult

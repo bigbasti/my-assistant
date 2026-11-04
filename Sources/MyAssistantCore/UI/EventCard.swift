@@ -87,6 +87,23 @@ public struct EventCard: View {
         .glassEffect(.regular.tint(isRed(p) ? Color.red.opacity(0.2) : SourceKind.calendar.color.opacity(0.12)),
                      in: .rect(cornerRadius: 12, style: .continuous))
         .overlay { AccentEdge(color: isRed(p) ? .red : SourceKind.calendar.color, cornerRadius: 12) }
+        .overlay {
+            if case .started = p { StartedGlow(cornerRadius: 12).transition(.opacity) }
+        }
         .animation(.easeInOut(duration: 0.4), value: isRed(p))
+    }
+}
+
+/// Pulsing red outline and halo for a meeting that has already started.
+struct StartedGlow: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .strokeBorder(Color.red, lineWidth: 2)
+            .shadow(color: .red.opacity(0.9), radius: 8)
+            .shadow(color: .red.opacity(0.5), radius: 14)
+            .phaseAnimator([0.35, 1.0]) { v, f in v.opacity(f) } animation: { _ in .easeInOut(duration: 1.1) }
+            .allowsHitTesting(false)
     }
 }

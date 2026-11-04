@@ -59,16 +59,40 @@ public final class AppModel {
             opener(url); return
         }
         switch n.kind {
-        case .mail: launchApp("com.microsoft.Outlook")
+        case .mail: Task { await openMail(notificationQuery(n)) }
         case .teams: launchApp("com.microsoft.teams2")
         case .calendar: break
         }
     }
 
+    /// Query identifying a mail card's message (shared by open and delete).
+    public func notificationQuery(_ n: AssistantNotification) -> MailQuery {
+        MailQuery(subject: n.title, sender: n.sender,
+                  secondsAgo: max(0, Int(clock().timeIntervalSince(n.firstSurfacedAt).rounded())), toleranceSeconds: 300)
+    }
+
+    /// Opens the exact mail in Apple Mail; falls back to Outlook when it can't be found there.
+    public func openMail(_ query: MailQuery) async {
+        if case .found(let id) = await mailDeleter.messageID(for: query), let url = MailOpenResult.messageURL(for: id) {
+            opener(url)
+        } else {
+            launchApp("com.microsoft.Outlook")
+        }
+    }
+
     /// Opens what a to-do was created from, exactly like clicking the original card.
     public func open(_ ref: TodoReference) {
+        if ref.kind == .mail, ref.url == nil, let subject = ref.subject, let received = ref.received {
+            let q = MailQuery(subject: subject, sender: ref.label,
+                              secondsAgo: max(0, Int(clock().timeIntervalSince(received).rounded())), toleranceSeconds: 300)
+            Task { await openMail(q) }
+            return
+        }
         switch ref.kind {
         case .calendar: open(ref.url)
+        case .mail where ref.url == nil:
+            // Older mail to-dos have no subject to search Apple Mail for.
+            launchApp("com.microsoft.Outlook")
         case .teams, .mail:
             open(AssistantNotification(id: "ref", kind: ref.kind, title: "", sender: ref.label, preview: "",
                                        openURL: ref.url, firstSurfacedAt: clock(), surfacedAt: clock()))
@@ -83,9 +107,7 @@ public final class AppModel {
     /// Deletes the real mail behind a mail card via Apple Mail; the card is removed only on success.
     @discardableResult
     public func deleteMail(_ n: AssistantNotification) async -> MailDeleteResult {
-        let age = max(0, Int(clock().timeIntervalSince(n.firstSurfacedAt).rounded()))
-        let result = await mailDeleter.moveToTrash(
-            MailQuery(subject: n.title, sender: n.sender, secondsAgo: age, toleranceSeconds: 300))
+        let result = await mailDeleter.moveToTrash(notificationQuery(n))
         if result == .deleted { notifications.markDone(n.id) }
         return result
     }
