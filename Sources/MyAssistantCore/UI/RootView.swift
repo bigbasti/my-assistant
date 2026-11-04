@@ -37,6 +37,10 @@ public struct RootView: View {
                 Text("\(items.count)").font(.caption.bold()).padding(.horizontal, 8).padding(.vertical, 2)
                     .background(.tint.opacity(0.3), in: .capsule)
                     .contentTransition(.numericText())
+                if model.settings.hideFromScreenSharing {
+                    Image(systemName: "eye.slash").font(.caption).foregroundStyle(.secondary)
+                        .help("Hidden from screen sharing")
+                }
             }
             if items.isEmpty {
                 ContentUnavailableView("All caught up", systemImage: "tray")

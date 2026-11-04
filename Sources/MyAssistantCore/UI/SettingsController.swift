@@ -77,6 +77,11 @@ public final class SettingsController {
         changed()
     }
 
+    public func setHideFromScreenSharing(_ on: Bool) {
+        model.settings.hideFromScreenSharing = on
+        changed()
+    }
+
     public func setLaunchAtLogin(_ on: Bool) {
         launchError = nil
         do {

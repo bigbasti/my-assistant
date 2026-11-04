@@ -53,6 +53,25 @@ final class FakeLoginItem: LoginItem {
         return (c, e, m)
     }
 
+    @Test func hideFromScreenSharingDefaultsOn() throws {
+        let old = #"{"settings":{"playTone":false}}"#.data(using: .utf8)!
+        #expect(try JSONDecoder().decode(PersistedState.self, from: old).settings.hideFromScreenSharing)
+        #expect(AppSettings().hideFromScreenSharing)
+    }
+
+    @Test func hideFromScreenSharingIsSaved() {
+        let (c, _, m) = make()
+        c.setHideFromScreenSharing(false)
+        #expect(!m.settings.hideFromScreenSharing)
+        #expect(m.persistence.hasPendingSave)
+    }
+
+    @Test func sharingTypeRule() {
+        #expect(ScreenSharingGuard.sharingType(hide: true, isSettingsWindow: false) == .none)
+        #expect(ScreenSharingGuard.sharingType(hide: true, isSettingsWindow: true) == .readOnly)
+        #expect(ScreenSharingGuard.sharingType(hide: false, isSettingsWindow: false) == .readOnly)
+    }
+
     @Test func backgroundOpacityDefaultsToClearGlass() throws {
         let old = #"{"settings":{"playTone":false}}"#.data(using: .utf8)!
         #expect(try JSONDecoder().decode(PersistedState.self, from: old).settings.backgroundOpacity == 0)

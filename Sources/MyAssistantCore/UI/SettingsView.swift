@@ -101,6 +101,13 @@ private struct GeneralTab: View {
                        isOn: Binding(get: { c.model.settings.playTone }, set: { c.setPlayTone($0) }))
             }
             Section {
+                Toggle("Hide panel from screen sharing",
+                       isOn: Binding(get: { c.model.settings.hideFromScreenSharing }, set: { c.setHideFromScreenSharing($0) }))
+            } footer: {
+                Text("Viewers of Teams, Zoom or other screen shares and recordings see what's behind the panel instead of your messages. You still see it normally. Also hides the panel from your own screenshots.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
                 LabeledContent("Background opacity") {
                     HStack(spacing: 8) {
                         Image(systemName: "circle.dotted").foregroundStyle(.secondary).help("See-through")

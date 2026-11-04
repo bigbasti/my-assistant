@@ -8,6 +8,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var playTone = true
     /// 0 = fully see-through glass, 1 = nearly solid panel (for bright backgrounds).
     public var backgroundOpacity: Double = 0
+    /// Keeps the panel (and its popovers) out of screen sharing and recordings.
+    public var hideFromScreenSharing = true
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -17,6 +19,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         reserveScreenSpace = try c.decodeIfPresent(Bool.self, forKey: .reserveScreenSpace) ?? true
         playTone = try c.decodeIfPresent(Bool.self, forKey: .playTone) ?? true
         backgroundOpacity = try c.decodeIfPresent(Double.self, forKey: .backgroundOpacity) ?? 0
+        hideFromScreenSharing = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing) ?? true
     }
 }
 

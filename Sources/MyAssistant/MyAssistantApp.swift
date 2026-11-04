@@ -6,6 +6,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let reserver = ScreenReserver()
     let model = AppModel(persistence: Persistence(url: Persistence.defaultURL))
+    lazy var sharingGuard = ScreenSharingGuard(model: model)
     lazy var coordinator = SourceCoordinator(
         model: model,
         watcher: NotificationWatcher(model: model, read: { ids throws(NotificationDBError) in
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         dock.show()
+        sharingGuard.start()
         model.startTimer()
         coordinator.start()
     }
