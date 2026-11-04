@@ -170,3 +170,41 @@ import SwiftUI
         #expect(saved[saved.range(of: "red")!].foregroundColor == .red)
     }
 }
+
+@Suite struct DueDateMathTests {
+    static var berlin: Calendar {
+        var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "Europe/Berlin")!; c.firstWeekday = 2; return c
+    }
+    let cal = Self.berlin
+    func d(_ day: Int, _ month: Int = 11, _ h: Int = 0, _ m: Int = 0) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: month, day: day, hour: h, minute: m))!
+    }
+
+    @Test func monthGridStartsOnFirstWeekdayAndHasWholeWeeks() {
+        let grid = DueDateMath.monthGrid(containing: d(4), calendar: cal)
+        #expect(grid.count % 7 == 0)
+        // 1 Nov 2026 is a Sunday; with Monday first, the grid starts on Mon 26 Oct.
+        #expect(grid.first == d(26, 10))
+        #expect(grid.contains(d(30)) && grid.contains(d(1)))
+    }
+
+    @Test func presets() {
+        let now = d(4, 11, 10, 30) // Wednesday 10:30
+        let p = DueDateMath.presets(now: now, calendar: cal)
+        #expect(p.map(\.label) == ["Today 17:00", "Tomorrow 9:00", "Next Monday 9:00", "In a week"])
+        #expect(p[0].date == d(4, 11, 17))
+        #expect(p[1].date == d(5, 11, 9))
+        #expect(p[2].date == d(9, 11, 9))
+        #expect(p[3].date == d(11, 11, 10, 30))
+    }
+
+    @Test func todayPresetSkippedAfterFive() {
+        let p = DueDateMath.presets(now: d(4, 11, 18), calendar: cal)
+        #expect(p.first?.label == "Tomorrow 9:00")
+    }
+
+    @Test func combineKeepsDayAndSetsTime() {
+        #expect(DueDateMath.setting(hour: 15, minute: 0, on: d(9, 11, 9, 45), calendar: cal) == d(9, 11, 15))
+        #expect(DueDateMath.setting(day: d(12), keepingTimeOf: d(9, 11, 15, 30), calendar: cal) == d(12, 11, 15, 30))
+    }
+}

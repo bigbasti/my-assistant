@@ -192,9 +192,10 @@ struct TodoDetail: View {
 
             HStack(spacing: 12) {
                 Button { showDue = true } label: {
-                    Label(item.due == nil ? "Due date" : "Due", systemImage: "calendar.badge.clock")
+                    Label(item.due.map { $0.formatted(.dateTime.day().month(.abbreviated).hour().minute()) } ?? "Due date",
+                          systemImage: "calendar.badge.clock")
                 }
-                .popover(isPresented: $showDue) { DuePicker(model: model, item: item) }
+                .popover(isPresented: $showDue) { DuePicker(model: model, item: item) { showDue = false } }
 
                 Button { showReschedule = true } label: { Label("Reschedule", systemImage: "clock.arrow.circlepath") }
                     .popover(isPresented: $showReschedule) {
@@ -215,34 +216,8 @@ struct TodoDetail: View {
                 }
             }
             .buttonStyle(.plain).font(.caption).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
+            .lineLimit(1).fixedSize(horizontal: false, vertical: true)
         }
         .onAppear { title = item.title }
-    }
-}
-
-struct DuePicker: View {
-    let model: AppModel
-    let item: TodoItem
-    @State private var date = Date()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DatePicker("", selection: $date, displayedComponents: [.date]).datePickerStyle(.graphical).labelsHidden()
-            HStack {
-                Text("Time").foregroundStyle(.secondary)
-                Spacer()
-                DatePicker("", selection: $date, displayedComponents: [.hourAndMinute]).datePickerStyle(.stepperField).labelsHidden()
-            }
-            HStack {
-                if item.due != nil {
-                    Button("Remove") { model.todos.setDue(item.id, nil) }.buttonStyle(.glass)
-                }
-                Spacer()
-                Button("Set due") { withAnimation(TodoSection.motion) { model.todos.setDue(item.id, date) } }
-                    .buttonStyle(.glassProminent)
-            }
-        }
-        .padding(16).frame(width: 260)
-        .onAppear { date = item.due ?? Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date() }
     }
 }
