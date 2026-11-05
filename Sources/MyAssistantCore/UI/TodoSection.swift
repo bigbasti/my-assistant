@@ -34,7 +34,15 @@ struct TodoSection: View {
                     }
                     .padding(.horizontal, 6).padding(.vertical, 4)
                     .animation(Self.motion, value: items.map(\.id))
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                    // Report the height right away and on every change (onGeometryChange only
+                    // reports changes, so a list that never changes kept its initial height).
+                    .background {
+                        GeometryReader { g in
+                            Color.clear
+                                .onAppear { contentHeight = g.size.height }
+                                .onChange(of: g.size.height) { _, h in contentHeight = h }
+                        }
+                    }
                 }
                 .scrollIndicators(.never)
                 .scrollEdgeEffectStyle(.soft, for: .vertical)

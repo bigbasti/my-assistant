@@ -5,9 +5,10 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let reserver = ScreenReserver()
-    let model = AppModel(persistence: Persistence(url: Persistence.defaultURL))
+    let model = AppModel(persistence: Persistence(url: DemoData.isEnabled ? DemoData.stateURL : Persistence.defaultURL))
     lazy var sharingGuard = ScreenSharingGuard(model: model)
     lazy var keeper = AppKeeper(model: model)
+    lazy var updater = Updater(model: model)
     lazy var fullscreenWatcher = FullscreenWatcher(
         panelScreen: { [unowned self] in self.dock.currentScreen },
         setHidden: { [unowned self] hidden in self.dock.setTemporarilyHidden(hidden) })
@@ -49,17 +50,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             })
         c.keeper = keeper
+        c.updater = updater
         c.onWatchedChange = { [keeper] in keeper.check() }
         return c
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if DemoData.isEnabled {
+            // Screenshot mode: fictional data only; no real sources, no app restarts, no update checks.
+            DemoData.populate(model)
+            dock.show()
+            sharingGuard.start()
+            model.startTimer()
+            return
+        }
         dock.show()
         sharingGuard.start()
         model.startTimer()
         coordinator.start()
         keeper.start()
         fullscreenWatcher.start()
+        updater.startAutoCheck()
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {

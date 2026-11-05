@@ -15,6 +15,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var watched: [WatchedItem] = []
     /// Panel width in points, set by dragging its sides.
     public var panelWidth: Double = 360
+    public var autoCheckUpdates = true
+    public var lastUpdateCheck: Date?
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -27,6 +29,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hideFromScreenSharing = try c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing) ?? true
         keepAppsRunning = try c.decodeIfPresent(Bool.self, forKey: .keepAppsRunning) ?? true
         watched = try c.decodeIfPresent([WatchedItem].self, forKey: .watched) ?? []
+        autoCheckUpdates = try c.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? true
+        lastUpdateCheck = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheck)
         panelWidth = Double(DockGeometry.clampWidth(CGFloat(try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 360)))
     }
 }

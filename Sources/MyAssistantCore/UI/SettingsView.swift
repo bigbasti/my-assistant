@@ -14,6 +14,8 @@ public struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             WatchedAppsTab(c: controller)
                 .tabItem { Label("Watched apps", systemImage: "arrow.clockwise.circle") }
+            UpdatesTab(c: controller)
+                .tabItem { Label("Updates", systemImage: "arrow.down.app") }
         }
         .frame(width: 520, height: 440)
     }

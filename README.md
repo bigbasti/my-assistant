@@ -4,11 +4,38 @@
 
 A docked, always-on-top macOS panel showing Teams chats, Outlook mail, to-dos and today's meetings. Everything is read locally on your Mac; there is no sign-in and no cloud access.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td rowspan="2" valign="top" width="34%"><img src="docs/screenshots/panel.png" alt="The docked panel with messages, to-dos and today's meetings"></td>
+    <td valign="top">
+
+**The panel** docks to the left or right edge of a screen and keeps other windows out of its strip.
+
+- **Messages** — new Teams chats (violet) and Outlook mails (blue), newest first, glowing for their first 10 minutes. Click to open the exact chat or mail; ✓ to dismiss, ⟲ to snooze, 🗑 to delete a mail. Right-click for *Create To Do* or *Clear all from …*.
+- **To Dos** — one-line tasks with due dates (orange today, red overdue), rich-text notes and reschedule. *Show more* expands the section to half the panel.
+- **Today** — the next meetings first; a countdown under 10 minutes, red under 5, pulsing under 1 and a glowing border once started (with a chime). Join opens Teams, Zoom, Webex or Meet. Tomorrow's meetings appear when today is nearly done.
+
+The example data in these screenshots is fictional (`My Assistant --demo`).
+
+</td>
+  </tr>
+</table>
+
+| Sources | General |
+|---|---|
+| ![Sources settings](docs/screenshots/settings-sources.png) | ![General settings](docs/screenshots/settings-general.png) |
+| **Watched apps** | **Updates** |
+| ![Watched apps settings](docs/screenshots/settings-watched-apps.png) | ![Updates settings](docs/screenshots/settings-updates.png) |
+
 ## Download
 
 Get the latest **My-Assistant-x.y.z.zip** from [Releases](../../releases/latest), unzip it and move **My Assistant.app** to `/Applications`.
 
 The app isn't notarized by Apple, so on first launch right-click it → **Open** → **Open** (or System Settings → Privacy & Security → **Open Anyway**). Requires macOS 26.
+
+Afterwards the app updates itself: **Settings → Updates → Check for Updates → Download & Install** (it also checks once a day). Updates are verified against the release checksum; if an *Apple Development* certificate is in your keychain, the update is re-signed with it so macOS keeps the permissions you granted.
 
 ## Releases and versions
 

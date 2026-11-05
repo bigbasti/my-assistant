@@ -88,6 +88,12 @@ public final class SettingsController {
     public var onWatchedChange: (@MainActor () -> Void)?
     /// Source of live per-item status for the settings list.
     public var keeper: AppKeeper?
+    public var updater: Updater?
+
+    public func setAutoCheckUpdates(_ on: Bool) {
+        model.settings.autoCheckUpdates = on
+        changed()
+    }
 
     public func setKeepAppsRunning(_ on: Bool) {
         model.settings.keepAppsRunning = on
