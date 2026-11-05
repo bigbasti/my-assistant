@@ -1,0 +1,87 @@
+name: Release
+
+# Every push to main builds the app, runs the tests and publishes a GitHub release.
+# Version = <VERSION file>.<run number>, e.g. 1.0.17.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags + history for the changelog
+
+      - name: Select newest Xcode
+        run: |
+          XCODE="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Using $XCODE"
+          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift run MyAssistantTests
+
+      - name: Version
+        run: echo "APP_VERSION=$(tr -d '[:space:]' < VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Build app
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          SIGN_IDENTITY: "-" # ad-hoc: the developer certificate stays on the developer's Mac
+        run: ./scripts/bundle.sh
+
+      - name: Package
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent "build/My Assistant.app" "My-Assistant-$APP_VERSION.zip"
+          shasum -a 256 "My-Assistant-$APP_VERSION.zip" | tee checksum.txt
+
+      - name: Release notes
+        run: |
+          PREV="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          {
+            echo "## Install"
+            echo
+            echo "1. Download **My-Assistant-$APP_VERSION.zip** below and unzip it."
+            echo "2. Move **My Assistant.app** to **/Applications**."
+            echo "3. First launch: right-click the app → **Open** → **Open**."
+            echo "   The app isn't notarized by Apple, so macOS asks once. Alternatively use"
+            echo "   System Settings → Privacy & Security → **Open Anyway**."
+            echo "4. Grant the permissions the app asks for (Full Disk Access, Calendar, Accessibility); see the README."
+            echo
+            echo "Requires macOS 26 or later."
+            echo
+            echo "## Changes"
+            echo
+            if [ -n "$PREV" ]; then
+              git log --pretty='- %s' "$PREV..HEAD"
+            else
+              git log --pretty='- %s' -n 20
+            fi
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 checksum.txt)\`"
+          } > notes.md
+          cat notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$APP_VERSION" "My-Assistant-$APP_VERSION.zip" \
+            --title "My Assistant $APP_VERSION" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            --latest

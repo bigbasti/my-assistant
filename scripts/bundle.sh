@@ -9,8 +9,13 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/MyAssistant" "$APP/Contents/MacOS/MyAssistant"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 for f in Resources/*; do
-  [ "$(basename "$f")" = "Info.plist" ] || cp "$f" "$APP/Contents/Resources/"
+  case "$(basename "$f")" in Info.plist|AppIcon.png) ;; *) cp "$f" "$APP/Contents/Resources/" ;; esac
 done
+# Version: VERSION holds major.minor; BUILD_NUMBER (set by CI) makes the patch/build number.
+BUILD_NUMBER="${BUILD_NUMBER:-0}"
+APP_VERSION="${APP_VERSION:-$(cat VERSION).${BUILD_NUMBER}}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
+echo "Version $APP_VERSION (build $BUILD_NUMBER)"
 # A stable identity keeps macOS privacy grants (Accessibility, Full Disk Access, Calendar,
 # Automation) across rebuilds; ad-hoc signatures change with every build and reset them.
 # Override with SIGN_IDENTITY="-" for ad-hoc, or another identity name/hash.
